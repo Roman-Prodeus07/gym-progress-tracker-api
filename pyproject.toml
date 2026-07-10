@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gym-progress-tracker-api"
+version = "0.1.0"
+description = "A production-ready API for tracking gym workouts and fitness progress."
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi[standard]>=0.139.0,<0.140.0",
+    "sqlalchemy[asyncio]>=2.0.51,<2.1.0",
+    "alembic>=1.18.5,<2.0.0",
+    "psycopg[binary]>=3.3.4,<4.0.0",
+    "pydantic-settings>=2.14.2,<3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1.1,<10.0.0",
+    "httpx2>=2.5.0,<3.0.0",
+    "ruff>=0.15.21,<0.16.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra -q"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
