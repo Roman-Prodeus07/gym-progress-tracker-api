@@ -19,6 +19,11 @@ and deployment practices.
 - Linting and formatting with Ruff
 - Automatic Swagger and OpenAPI documentation
 - Environment-based configuration
+- User registration with email normalization
+- UUID-based user identities
+- Secure Argon2id password hashing
+- Duplicate email handling
+- Safe response schemas that exclude password hashes
 
 ## Technology stack
 
@@ -32,6 +37,7 @@ and deployment practices.
 - Docker and Docker Compose
 - pytest
 - Ruff
+- pwdlib with Argon2
 
 ## Project structure
 
@@ -39,21 +45,34 @@ and deployment practices.
 .
 ├── alembic/
 │   ├── versions/
+│   │   └── <revision>_create_users_table.py
 │   ├── env.py
 │   └── script.py.mako
 ├── app/
 │   ├── api/
 │   │   ├── routes/
+│   │   │   ├── auth.py
 │   │   │   └── health.py
 │   │   └── router.py
 │   ├── core/
-│   │   └── config.py
+│   │   ├── config.py
+│   │   └── security.py
 │   ├── db/
 │   │   ├── base.py
 │   │   └── session.py
+│   ├── models/
+│   │   ├── mixins.py
+│   │   └── user.py
+│   ├── schemas/
+│   │   └── user.py
+│   ├── services/
+│   │   └── user.py
 │   └── main.py
 ├── tests/
-│   └── test_health.py
+│   ├── test_auth.py
+│   ├── test_health.py
+│   ├── test_security.py
+│   └── test_user_schemas.py
 ├── .env.example
 ├── alembic.ini
 ├── compose.yaml
@@ -174,14 +193,47 @@ alembic upgrade head
 
 ## API endpoints
 
-| Method | Endpoint        | Description                          |
-| ------ | --------------- | ------------------------------------ |
-| GET    | `/health`       | Checks whether the API is running    |
-| GET    | `/health/ready` | Checks API and PostgreSQL readiness  |
+| Method | Endpoint         | Description                         |
+| ------ | ---------------- | ----------------------------------- |
+| GET    | `/health`        | Checks whether the API is running   |
+| GET    | `/health/ready`  | Checks API and database readiness   |
+| POST   | `/auth/register` | Registers a new user                |
+
+## Register a user
+
+```bash
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "StrongPassword-2026!"
+  }'
+```
+
+Successful response:
+
+```json
+{
+  "id": "0d01fbce-6fc7-49e9-929c-87c732b924a6",
+  "email": "user@example.com",
+  "created_at": "2026-07-12T13:00:00Z",
+  "updated_at": "2026-07-12T13:00:00Z"
+}
+```
+
+The API never returns plaintext passwords or stored password hashes.
+
+Possible responses:
+
+| Status | Meaning                                      |
+| ------ | -------------------------------------------- |
+| `201`  | User created                                 |
+| `409`  | An account with the email already exists     |
+| `422`  | Email or password validation failed          |
 
 ## Roadmap
 
-- User registration and JWT authentication
+- JWT login, access tokens, and refresh tokens
 - Exercise catalogue
 - Workout and set tracking
 - Body measurements and progress analytics
@@ -191,4 +243,4 @@ alembic upgrade head
 
 ## Project status
 
-Sprint 1: project foundation and development environment.
+Sprint 2: user persistence and registration.
