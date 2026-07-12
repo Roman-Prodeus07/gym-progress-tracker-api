@@ -228,7 +228,7 @@ Possible responses:
 | Status | Meaning                                      |
 | ------ | -------------------------------------------- |
 | `201`  | User created                                 |
-| `409`  | An account with the email already exists     |
+| `409`  | A user with this email already exists     |
 | `422`  | Email or password validation failed          |
 
 ## Roadmap

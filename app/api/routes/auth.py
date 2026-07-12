@@ -22,7 +22,7 @@ router = APIRouter(
     responses={
         status.HTTP_409_CONFLICT: {
             "model": ErrorResponse,
-            "description": "An account with the email already exists.",
+            "description": "A user with this email already exists.",
         },
     },
 )

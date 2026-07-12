@@ -143,6 +143,4 @@ def test_register_openapi_documents_conflict_response() -> None:
 
     assert "201" in responses
     assert "409" in responses
-    assert responses["409"]["description"] == (
-        "An account with the email already exists."
-    )
+    assert responses["409"]["description"] == ("A user with this email already exists.")
