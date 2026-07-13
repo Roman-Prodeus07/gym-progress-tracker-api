@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,12 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+psycopg://gym_tracker:change_me@localhost:5432/gym_progress_tracker"
     )
+
+    jwt_secret_key: SecretStr = Field(min_length=32)
+    jwt_algorithm: Literal["HS256"] = "HS256"
+    jwt_access_token_expire_minutes: PositiveInt = 30
+    jwt_issuer: str = "gym-progress-tracker-api"
+    jwt_audience: str = "gym-progress-tracker-api"
 
     model_config = SettingsConfigDict(
         env_file=".env",
