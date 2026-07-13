@@ -24,6 +24,12 @@ and deployment practices.
 - Secure Argon2id password hashing
 - Duplicate email handling
 - Safe response schemas that exclude password hashes
+- JWT access-token authentication
+- Configurable token expiration, issuer, and audience validation
+- OAuth2 password flow integrated with Swagger UI
+- Protected current-user endpoint
+- Consistent `401 Unauthorized` responses with Bearer authentication headers
+- Timing-attack mitigation for unknown login emails
 
 ## Technology stack
 
@@ -34,10 +40,11 @@ and deployment practices.
 - Alembic
 - Psycopg 3
 - Pydantic Settings
+- PyJWT
+- pwdlib with Argon2
 - Docker and Docker Compose
 - pytest
 - Ruff
-- pwdlib with Argon2
 
 ## Project structure
 
@@ -50,9 +57,12 @@ and deployment practices.
 │   └── script.py.mako
 ├── app/
 │   ├── api/
+│   │   ├── dependencies/
+│   │   │   └── auth.py
 │   │   ├── routes/
 │   │   │   ├── auth.py
-│   │   │   └── health.py
+│   │   │   ├── health.py
+│   │   │   └── users.py
 │   │   └── router.py
 │   ├── core/
 │   │   ├── config.py
@@ -64,15 +74,24 @@ and deployment practices.
 │   │   ├── mixins.py
 │   │   └── user.py
 │   ├── schemas/
+│   │   ├── common.py
+│   │   ├── token.py
 │   │   └── user.py
 │   ├── services/
+│   │   ├── auth.py
 │   │   └── user.py
 │   └── main.py
 ├── tests/
 │   ├── test_auth.py
+│   ├── test_auth_dependencies.py
+│   ├── test_auth_service.py
 │   ├── test_health.py
+│   ├── test_jwt.py
+│   ├── test_login.py
 │   ├── test_security.py
-│   └── test_user_schemas.py
+│   ├── test_token_schemas.py
+│   ├── test_user_schemas.py
+│   └── test_users.py
 ├── .env.example
 ├── alembic.ini
 ├── compose.yaml
@@ -89,7 +108,16 @@ and deployment practices.
 cp .env.example .env
 ```
 
-The values in `.env.example` are intended only for local development.
+Generate a development JWT secret:
+
+```bash
+openssl rand -hex 32
+```
+
+Copy the generated value into `JWT_SECRET_KEY` in `.env`.
+
+The values in `.env.example` are intended only for local development. Never
+commit the real `.env` file or reuse a development secret in production.
 
 ### 2. Build and start the services
 
@@ -97,26 +125,45 @@ The values in `.env.example` are intended only for local development.
 docker compose up --build -d
 ```
 
-### 3. Check service status
+### 3. Apply database migrations
+
+```bash
+docker compose exec api alembic upgrade head
+```
+
+### 4. Check service status
 
 ```bash
 docker compose ps
 ```
 
-### 4. Open the API
+### 5. Open the API
 
 - Swagger UI: <http://localhost:8000/docs>
 - OpenAPI schema: <http://localhost:8000/openapi.json>
 - Health: <http://localhost:8000/health>
 - Readiness: <http://localhost:8000/health/ready>
 
-### 5. Stop the services
+### 6. Stop the services
 
 ```bash
 docker compose down
 ```
 
 The PostgreSQL data remains stored in the named Docker volume.
+
+## Authentication configuration
+
+| Variable                          | Description                           | Default                    |
+| --------------------------------- | ------------------------------------- | -------------------------- |
+| `JWT_SECRET_KEY`                  | Secret used to sign access tokens     | Required, minimum 32 chars |
+| `JWT_ALGORITHM`                   | Allowed JWT signing algorithm         | `HS256`                    |
+| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | Access-token lifetime in minutes      | `30`                       |
+| `JWT_ISSUER`                      | Expected token issuer                 | `gym-progress-tracker-api` |
+| `JWT_AUDIENCE`                    | Expected token audience               | `gym-progress-tracker-api` |
+
+Changing `JWT_SECRET_KEY` invalidates every access token signed with the
+previous secret.
 
 ## Local development
 
@@ -133,10 +180,16 @@ Install the application and development dependencies:
 python -m pip install -e ".[dev]"
 ```
 
-Start only PostgreSQL in Docker:
+Start PostgreSQL in Docker:
 
 ```bash
 docker compose up -d db
+```
+
+Apply database migrations:
+
+```bash
+alembic upgrade head
 ```
 
 Run FastAPI locally:
@@ -193,11 +246,13 @@ alembic upgrade head
 
 ## API endpoints
 
-| Method | Endpoint         | Description                         |
-| ------ | ---------------- | ----------------------------------- |
-| GET    | `/health`        | Checks whether the API is running   |
-| GET    | `/health/ready`  | Checks API and database readiness   |
-| POST   | `/auth/register` | Registers a new user                |
+| Method | Endpoint         | Authentication | Description                       |
+| ------ | ---------------- | -------------- | --------------------------------- |
+| GET    | `/health`        | Public         | Checks whether the API is running |
+| GET    | `/health/ready`  | Public         | Checks API and database readiness |
+| POST   | `/auth/register` | Public         | Registers a new user              |
+| POST   | `/auth/login`    | Public         | Issues a JWT access token         |
+| GET    | `/users/me`      | Bearer token   | Returns the authenticated user    |
 
 ## Register a user
 
@@ -216,31 +271,115 @@ Successful response:
 {
   "id": "0d01fbce-6fc7-49e9-929c-87c732b924a6",
   "email": "user@example.com",
-  "created_at": "2026-07-12T13:00:00Z",
-  "updated_at": "2026-07-12T13:00:00Z"
+  "created_at": "2026-07-13T20:00:00Z",
+  "updated_at": "2026-07-13T20:00:00Z"
 }
 ```
 
-The API never returns plaintext passwords or stored password hashes.
+Possible responses:
+
+| Status | Meaning                               |
+| ------ | ------------------------------------- |
+| `201`  | User created                          |
+| `409`  | A user with this email already exists |
+| `422`  | Email or password validation failed   |
+
+## Log in
+
+The login endpoint follows the OAuth2 password form contract. The standard
+`username` field is interpreted as the user's email address.
+
+```bash
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "username=user@example.com" \
+  --data-urlencode "password=StrongPassword-2026!"
+```
+
+Successful response:
+
+```json
+{
+  "access_token": "<signed-jwt-access-token>",
+  "token_type": "bearer"
+}
+```
+
+Access tokens expire after 30 minutes by default. Each token contains the
+following claims:
+
+- `sub`: UUID of the authenticated user
+- `type`: token type, currently `access`
+- `iat`: token creation time
+- `exp`: token expiration time
+- `iss`: token issuer
+- `aud`: intended token audience
+
+The API validates the token signature, algorithm, type, expiration, issuer,
+audience, and subject before granting access.
+
+Possible responses:
+
+| Status | Meaning                           |
+| ------ | --------------------------------- |
+| `200`  | Login successful and token issued |
+| `401`  | Email or password is incorrect    |
+| `422`  | OAuth2 form validation failed     |
+
+## Get the authenticated user
+
+Replace `<access-token>` with the token returned by `/auth/login`:
+
+```bash
+curl http://localhost:8000/users/me \
+  -H "Authorization: Bearer <access-token>"
+```
+
+Successful response:
+
+```json
+{
+  "id": "0d01fbce-6fc7-49e9-929c-87c732b924a6",
+  "email": "user@example.com",
+  "created_at": "2026-07-13T20:00:00Z",
+  "updated_at": "2026-07-13T20:00:00Z"
+}
+```
+
+The API never returns plaintext passwords, password hashes, JWT secrets, or
+other authentication credentials.
 
 Possible responses:
 
 | Status | Meaning                                      |
 | ------ | -------------------------------------------- |
-| `201`  | User created                                 |
-| `409`  | A user with this email already exists     |
-| `422`  | Email or password validation failed          |
+| `200`  | Authenticated user returned                  |
+| `401`  | Token is missing, invalid, expired, or stale |
+
+The complete authentication flow can also be tested using the **Authorize**
+button in Swagger UI at <http://localhost:8000/docs>.
+
+## Security decisions
+
+- Passwords are hashed with Argon2id and never stored in plaintext.
+- Password hashing and verification run outside the asynchronous event loop.
+- Unknown emails use dummy password verification to reduce timing differences.
+- JWT algorithms are explicitly allow-listed during token validation.
+- Token expiration, issuer, audience, type, and subject are validated.
+- Authentication failures return consistent `401 Unauthorized` responses.
+- Protected responses use explicit schemas that exclude password hashes.
+- Real secrets are loaded from environment variables and excluded from Git.
 
 ## Roadmap
 
-- JWT login, access tokens, and refresh tokens
+- Refresh-token rotation and logout/revocation
 - Exercise catalogue
 - Workout and set tracking
 - Body measurements and progress analytics
-- Unit and integration test suites
+- Dedicated PostgreSQL integration test suite
 - GitHub Actions CI pipeline
 - Production deployment
 
 ## Project status
 
-Sprint 2: user persistence and registration.
+Sprint 3: JWT login and protected user routes.
