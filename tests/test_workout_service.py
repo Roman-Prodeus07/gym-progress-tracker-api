@@ -103,6 +103,8 @@ async def test_list_workout_sessions_filters_owner_and_paginates() -> None:
     assert 20 in items_parameters
     assert 5 in items_parameters
     assert "ORDER BY workout_sessions.started_at DESC" in str(items_statement)
+    assert "workout_sessions.created_at DESC" in str(items_statement)
+    assert "workout_sessions.id DESC" in str(items_statement)
 
 
 @pytest.mark.anyio

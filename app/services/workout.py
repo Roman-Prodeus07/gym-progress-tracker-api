@@ -54,6 +54,7 @@ async def list_workout_sessions(
         .order_by(
             WorkoutSession.started_at.desc(),
             WorkoutSession.created_at.desc(),
+            WorkoutSession.id.desc(),
         )
         .limit(limit)
         .offset(offset)
