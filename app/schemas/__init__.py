@@ -1,4 +1,5 @@
 from app.schemas.common import ErrorResponse
+from app.schemas.exercise import ExerciseListResponse, ExerciseResponse
 from app.schemas.token import TokenPayload, TokenResponse
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.workout import (
@@ -10,6 +11,8 @@ from app.schemas.workout import (
 
 __all__ = [
     "ErrorResponse",
+    "ExerciseListResponse",
+    "ExerciseResponse",
     "TokenPayload",
     "TokenResponse",
     "UserCreate",

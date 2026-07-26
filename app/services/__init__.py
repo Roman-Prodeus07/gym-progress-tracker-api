@@ -1,4 +1,5 @@
 from app.services.auth import authenticate_user
+from app.services.exercise import get_active_exercise, list_active_exercises
 from app.services.user import (
     EmailAlreadyRegisteredError,
     register_user,
@@ -18,7 +19,9 @@ __all__ = [
     "authenticate_user",
     "create_workout_session",
     "delete_workout_session",
+    "get_active_exercise",
     "get_owned_workout_session",
+    "list_active_exercises",
     "list_workout_sessions",
     "register_user",
     "update_workout_session",
