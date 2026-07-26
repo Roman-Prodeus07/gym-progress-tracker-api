@@ -12,6 +12,15 @@ from app.services.workout import (
     list_workout_sessions,
     update_workout_session,
 )
+from app.services.workout_exercise import (
+    ActiveExerciseNotFoundError,
+    WorkoutExercisePositionConflictError,
+    create_workout_exercise,
+    delete_workout_exercise,
+    get_owned_workout_exercise,
+    list_owned_workout_exercises,
+    update_workout_exercise,
+)
 
 __all__ = [
     "EmailAlreadyRegisteredError",
@@ -25,4 +34,11 @@ __all__ = [
     "list_workout_sessions",
     "register_user",
     "update_workout_session",
+    "ActiveExerciseNotFoundError",
+    "WorkoutExercisePositionConflictError",
+    "create_workout_exercise",
+    "delete_workout_exercise",
+    "get_owned_workout_exercise",
+    "list_owned_workout_exercises",
+    "update_workout_exercise",
 ]
