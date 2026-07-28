@@ -1,4 +1,5 @@
 from app.schemas.common import ErrorResponse
+from app.schemas.exercise import ExerciseListResponse, ExerciseResponse
 from app.schemas.token import TokenPayload, TokenResponse
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.workout import (
@@ -7,9 +8,23 @@ from app.schemas.workout import (
     WorkoutSessionResponse,
     WorkoutSessionUpdate,
 )
+from app.schemas.workout_exercise import (
+    WorkoutExerciseCreate,
+    WorkoutExerciseListResponse,
+    WorkoutExerciseResponse,
+    WorkoutExerciseUpdate,
+)
+from app.schemas.workout_set import (
+    WorkoutSetCreate,
+    WorkoutSetListResponse,
+    WorkoutSetResponse,
+    WorkoutSetUpdate,
+)
 
 __all__ = [
     "ErrorResponse",
+    "ExerciseListResponse",
+    "ExerciseResponse",
     "TokenPayload",
     "TokenResponse",
     "UserCreate",
@@ -18,4 +33,12 @@ __all__ = [
     "WorkoutSessionListResponse",
     "WorkoutSessionResponse",
     "WorkoutSessionUpdate",
+    "WorkoutExerciseCreate",
+    "WorkoutExerciseListResponse",
+    "WorkoutExerciseResponse",
+    "WorkoutExerciseUpdate",
+    "WorkoutSetCreate",
+    "WorkoutSetListResponse",
+    "WorkoutSetResponse",
+    "WorkoutSetUpdate",
 ]
