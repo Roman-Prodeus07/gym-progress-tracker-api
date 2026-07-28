@@ -34,8 +34,14 @@ and deployment practices.
 - UUID primary keys and timezone-aware timestamps across training entities
 - Database constraints for ordering, metrics, time ranges, and set types
 - Owner-scoped workout session CRUD
-- Offset pagination for workout session lists
-- Protection against cross-user workout access
+- Protected, paginated, read-only exercise catalogue
+- Idempotent seeding of 20 baseline catalogue exercises
+- Owner-scoped workout exercise CRUD with automatic position assignment
+- Nested workout set CRUD with automatic set-number assignment
+- Conflict handling for duplicate exercise positions and set numbers
+- Offset pagination for workout, exercise, and set collections
+- Protection against cross-user workout, workout exercise, and workout set access
+- Async-safe eager loading of nested exercise response data
 - Cascading deletion of workout details while preserving catalogue exercises
 
 ## Technology stack
@@ -69,8 +75,11 @@ and deployment practices.
 │   │   │   └── auth.py
 │   │   ├── routes/
 │   │   │   ├── auth.py
+│   │   │   ├── exercises.py
 │   │   │   ├── health.py
 │   │   │   ├── users.py
+│   │   │   ├── workout_exercises.py
+│   │   │   ├── workout_sets.py
 │   │   │   └── workouts.py
 │   │   └── router.py
 │   ├── core/
@@ -88,18 +97,32 @@ and deployment practices.
 │   │   └── workout_set.py
 │   ├── schemas/
 │   │   ├── common.py
+│   │   ├── exercise.py
 │   │   ├── token.py
 │   │   ├── user.py
-│   │   └── workout.py
+│   │   ├── workout.py
+│   │   ├── workout_exercise.py
+│   │   └── workout_set.py
+│   ├── scripts/
+│   │   ├── __init__.py
+│   │   └── seed_exercises.py
 │   ├── services/
 │   │   ├── auth.py
+│   │   ├── exercise.py
+│   │   ├── exercise_seed.py
 │   │   ├── user.py
-│   │   └── workout.py
+│   │   ├── workout.py
+│   │   ├── workout_exercise.py
+│   │   └── workout_set.py
 │   └── main.py
 ├── tests/
 │   ├── test_auth.py
 │   ├── test_auth_dependencies.py
 │   ├── test_auth_service.py
+│   ├── test_exercise_schemas.py
+│   ├── test_exercise_seed_service.py
+│   ├── test_exercise_service.py
+│   ├── test_exercises.py
 │   ├── test_health.py
 │   ├── test_jwt.py
 │   ├── test_login.py
@@ -107,8 +130,14 @@ and deployment practices.
 │   ├── test_token_schemas.py
 │   ├── test_user_schemas.py
 │   ├── test_users.py
+│   ├── test_workout_exercise_schemas.py
+│   ├── test_workout_exercise_service.py
+│   ├── test_workout_exercises.py
 │   ├── test_workout_schemas.py
 │   ├── test_workout_service.py
+│   ├── test_workout_set_schemas.py
+│   ├── test_workout_set_service.py
+│   ├── test_workout_sets.py
 │   └── test_workouts.py
 ├── .env.example
 ├── alembic.ini
@@ -149,20 +178,29 @@ docker compose up --build -d
 docker compose exec api alembic upgrade head
 ```
 
-### 4. Check service status
+### 4. Seed the exercise catalogue
+
+```bash
+docker compose exec api python -m app.scripts.seed_exercises
+```
+
+The seed command is idempotent. It inserts any missing baseline exercises and
+can be run repeatedly without creating duplicate catalogue entries.
+
+### 5. Check service status
 
 ```bash
 docker compose ps
 ```
 
-### 5. Open the API
+### 6. Open the API
 
 - Swagger UI: <http://localhost:8000/docs>
 - OpenAPI schema: <http://localhost:8000/openapi.json>
 - Health: <http://localhost:8000/health>
 - Readiness: <http://localhost:8000/health/ready>
 
-### 6. Stop the services
+### 7. Stop the services
 
 ```bash
 docker compose down
@@ -210,6 +248,12 @@ Apply database migrations:
 alembic upgrade head
 ```
 
+Seed the exercise catalogue:
+
+```bash
+python -m app.scripts.seed_exercises
+```
+
 Run FastAPI locally:
 
 ```bash
@@ -235,6 +279,10 @@ Run the tests:
 ```bash
 pytest
 ```
+
+The current validation baseline is 186 passing automated tests. The complete
+authenticated workout-recording flow has also been verified end to end against
+the Dockerised API and a real PostgreSQL database.
 
 ## Database migrations
 
@@ -264,18 +312,30 @@ alembic upgrade head
 
 ## API endpoints
 
-| Method | Endpoint                 | Authentication | Description                        |
-| ------ | ------------------------ | -------------- | ---------------------------------- |
-| GET    | `/health`                | Public         | Checks whether the API is running  |
-| GET    | `/health/ready`          | Public         | Checks API and database readiness  |
-| POST   | `/auth/register`         | Public         | Registers a new user               |
-| POST   | `/auth/login`            | Public         | Issues a JWT access token          |
-| GET    | `/users/me`              | Bearer token   | Returns the authenticated user     |
-| POST   | `/workouts`              | Bearer token   | Creates a workout session          |
-| GET    | `/workouts`              | Bearer token   | Lists the current user's workouts  |
-| GET    | `/workouts/{workout_id}` | Bearer token   | Returns an owned workout session   |
-| PATCH  | `/workouts/{workout_id}` | Bearer token   | Partially updates an owned workout |
-| DELETE | `/workouts/{workout_id}` | Bearer token   | Deletes an owned workout session   |
+| Method | Endpoint                                                                                     | Authentication | Description                         |
+| ------ | -------------------------------------------------------------------------------------------- | -------------- | ----------------------------------- |
+| GET    | `/health`                                                                                    | Public         | Checks whether the API is running   |
+| GET    | `/health/ready`                                                                              | Public         | Checks API and database readiness   |
+| POST   | `/auth/register`                                                                             | Public         | Registers a new user                |
+| POST   | `/auth/login`                                                                                | Public         | Issues a JWT access token           |
+| GET    | `/users/me`                                                                                  | Bearer token   | Returns the authenticated user      |
+| GET    | `/exercises`                                                                                 | Bearer token   | Lists active catalogue exercises    |
+| GET    | `/exercises/{exercise_id}`                                                                   | Bearer token   | Returns an active exercise          |
+| POST   | `/workouts`                                                                                  | Bearer token   | Creates a workout session           |
+| GET    | `/workouts`                                                                                  | Bearer token   | Lists the current user's workouts   |
+| GET    | `/workouts/{workout_id}`                                                                     | Bearer token   | Returns an owned workout session    |
+| PATCH  | `/workouts/{workout_id}`                                                                     | Bearer token   | Partially updates an owned workout  |
+| DELETE | `/workouts/{workout_id}`                                                                     | Bearer token   | Deletes an owned workout session    |
+| POST   | `/workouts/{workout_id}/exercises`                                                           | Bearer token   | Adds an exercise to a workout       |
+| GET    | `/workouts/{workout_id}/exercises`                                                           | Bearer token   | Lists exercises in a workout        |
+| GET    | `/workouts/{workout_id}/exercises/{workout_exercise_id}`                                     | Bearer token   | Returns a workout exercise          |
+| PATCH  | `/workouts/{workout_id}/exercises/{workout_exercise_id}`                                     | Bearer token   | Updates a workout exercise          |
+| DELETE | `/workouts/{workout_id}/exercises/{workout_exercise_id}`                                     | Bearer token   | Removes an exercise from a workout  |
+| POST   | `/workouts/{workout_id}/exercises/{workout_exercise_id}/sets`                                | Bearer token   | Adds a set to a workout exercise    |
+| GET    | `/workouts/{workout_id}/exercises/{workout_exercise_id}/sets`                                | Bearer token   | Lists workout sets                  |
+| GET    | `/workouts/{workout_id}/exercises/{workout_exercise_id}/sets/{workout_set_id}`               | Bearer token   | Returns a workout set               |
+| PATCH  | `/workouts/{workout_id}/exercises/{workout_exercise_id}/sets/{workout_set_id}`               | Bearer token   | Updates a workout set               |
+| DELETE | `/workouts/{workout_id}/exercises/{workout_exercise_id}/sets/{workout_set_id}`               | Bearer token   | Deletes a workout set               |
 
 ## Register a user
 
@@ -343,11 +403,11 @@ audience, and subject before granting access.
 
 Possible responses:
 
-| Status | Meaning                           |
-| ------ | --------------------------------- |
+| Status | Meaning                            |
+| ------ | ---------------------------------- |
 | `200`  | Login successful and token issued |
-| `401`  | Email or password is incorrect    |
-| `422`  | OAuth2 form validation failed     |
+| `401`  | Email or password is incorrect     |
+| `422`  | OAuth2 form validation failed      |
 
 ## Get the authenticated user
 
@@ -395,8 +455,9 @@ Ownership is stored on `WorkoutSession` and inherited by its child entities.
 This avoids duplicating `user_id` across the hierarchy and prevents
 inconsistent ownership data.
 
-Deleting a workout session cascades to its workout exercises and sets. The
-referenced catalogue exercises remain available for other workouts.
+Deleting a workout session cascades to its workout exercises and sets. Deleting
+a workout exercise cascades to its sets. The referenced catalogue exercises
+remain available for other workouts.
 
 Database constraints enforce:
 
@@ -409,6 +470,64 @@ Database constraints enforce:
 - RPE must be between `0` and `10`;
 - each set must contain at least one performance metric;
 - set types are restricted to supported values.
+
+## Exercise catalogue
+
+All exercise catalogue endpoints require a Bearer access token. The catalogue
+is read-only through the API and returns only active exercises.
+
+Seed the 20 baseline exercises before using the catalogue:
+
+```bash
+docker compose exec api python -m app.scripts.seed_exercises
+```
+
+### List catalogue exercises
+
+```bash
+curl "http://localhost:8000/exercises?limit=20&offset=0" \
+  -H "Authorization: Bearer <access-token>"
+```
+
+Successful response:
+
+```json
+{
+  "items": [
+    {
+      "id": "ae0ce5b7-4bea-4618-951a-15401a632b25",
+      "name": "Barbell Back Squat",
+      "slug": "barbell-back-squat",
+      "description": "Compound squat for the quadriceps and glutes.",
+      "primary_muscle_group": "quadriceps",
+      "equipment": "barbell",
+      "created_at": "2026-07-28T10:00:00Z",
+      "updated_at": "2026-07-28T10:00:00Z"
+    }
+  ],
+  "total": 20,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+### Get a catalogue exercise
+
+```bash
+curl http://localhost:8000/exercises/<exercise-id> \
+  -H "Authorization: Bearer <access-token>"
+```
+
+`limit` must be between `1` and `100`. `offset` must be zero or greater.
+
+Possible responses:
+
+| Status | Meaning                                       |
+| ------ | --------------------------------------------- |
+| `200`  | Active exercise returned or catalogue listed |
+| `401`  | Authentication is missing or invalid         |
+| `404`  | Active exercise was not found                 |
+| `422`  | UUID or pagination validation failed          |
 
 ## Workout sessions
 
@@ -511,14 +630,203 @@ enumeration and cross-user access.
 
 Possible responses:
 
-| Status | Meaning                                           |
-| ------ | ------------------------------------------------- |
-| `200`  | Workout returned, listed, or updated              |
-| `201`  | Workout created                                   |
-| `204`  | Workout deleted                                   |
-| `401`  | Authentication is missing or invalid              |
-| `404`  | Workout is missing or belongs to another user     |
-| `422`  | Request validation or workout time range failed   |
+| Status | Meaning                                         |
+| ------ | ----------------------------------------------- |
+| `200`  | Workout returned, listed, or updated            |
+| `201`  | Workout created                                 |
+| `204`  | Workout deleted                                 |
+| `401`  | Authentication is missing or invalid            |
+| `404`  | Workout is missing or belongs to another user   |
+| `422`  | Request validation or workout time range failed |
+
+## Workout exercises
+
+Workout exercises are nested under an owned workout session. Every response
+includes both `exercise_id` and the nested catalogue exercise so clients do not
+need an additional lookup to display exercise details.
+
+### Add an exercise to a workout
+
+```bash
+curl -X POST http://localhost:8000/workouts/<workout-id>/exercises \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "exercise_id": "<exercise-id>",
+    "rest_seconds": 90,
+    "notes": "Controlled tempo"
+  }'
+```
+
+Successful response:
+
+```json
+{
+  "id": "a6fd8904-54dd-4799-a3ae-a23407e07579",
+  "exercise_id": "ae0ce5b7-4bea-4618-951a-15401a632b25",
+  "exercise": {
+    "id": "ae0ce5b7-4bea-4618-951a-15401a632b25",
+    "name": "Barbell Back Squat",
+    "slug": "barbell-back-squat",
+    "description": "Compound squat for the quadriceps and glutes.",
+    "primary_muscle_group": "quadriceps",
+    "equipment": "barbell",
+    "created_at": "2026-07-28T10:00:00Z",
+    "updated_at": "2026-07-28T10:00:00Z"
+  },
+  "position": 1,
+  "rest_seconds": 90,
+  "notes": "Controlled tempo",
+  "created_at": "2026-07-28T10:05:00Z",
+  "updated_at": "2026-07-28T10:05:00Z"
+}
+```
+
+`position` is optional. When omitted, the service assigns
+`max(existing position) + 1`. An explicitly requested position that is already
+used within the workout returns `409 Conflict`.
+
+### List exercises in a workout
+
+```bash
+curl \
+  "http://localhost:8000/workouts/<workout-id>/exercises?limit=20&offset=0" \
+  -H "Authorization: Bearer <access-token>"
+```
+
+### Get, update, or remove a workout exercise
+
+```bash
+curl \
+  http://localhost:8000/workouts/<workout-id>/exercises/<workout-exercise-id> \
+  -H "Authorization: Bearer <access-token>"
+
+curl -X PATCH \
+  http://localhost:8000/workouts/<workout-id>/exercises/<workout-exercise-id> \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rest_seconds": 120,
+    "notes": "Updated rest interval"
+  }'
+
+curl -X DELETE \
+  http://localhost:8000/workouts/<workout-id>/exercises/<workout-exercise-id> \
+  -H "Authorization: Bearer <access-token>"
+```
+
+Successful deletion returns `204 No Content`. Deleting a workout exercise also
+deletes its workout sets through the database cascade.
+
+Possible responses:
+
+| Status | Meaning                                                   |
+| ------ | --------------------------------------------------------- |
+| `200`  | Workout exercise returned, listed, or updated             |
+| `201`  | Workout exercise created                                  |
+| `204`  | Workout exercise deleted                                  |
+| `401`  | Authentication is missing or invalid                      |
+| `404`  | Parent, exercise, or owned workout exercise was not found |
+| `409`  | Position is already used within the workout               |
+| `422`  | UUID, pagination, or request validation failed            |
+
+## Workout sets
+
+Workout sets are nested under an owned workout exercise and can record
+strength, timed, or distance-based performance.
+
+### Add a set to a workout exercise
+
+```bash
+curl -X POST \
+  http://localhost:8000/workouts/<workout-id>/exercises/<workout-exercise-id>/sets \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "set_type": "working",
+    "reps": 8,
+    "weight_kg": 60.5,
+    "rpe": 8.5,
+    "notes": "Strong working set"
+  }'
+```
+
+Successful response:
+
+```json
+{
+  "id": "0b594aad-a8b4-4191-9a76-09e83f6841c7",
+  "set_number": 1,
+  "set_type": "working",
+  "reps": 8,
+  "weight_kg": "60.500",
+  "duration_seconds": null,
+  "distance_meters": null,
+  "rpe": "8.5",
+  "notes": "Strong working set",
+  "created_at": "2026-07-28T10:10:00Z",
+  "updated_at": "2026-07-28T10:10:00Z"
+}
+```
+
+`set_number` is optional. When omitted, the service assigns
+`max(existing set number) + 1`. An explicitly requested set number that is
+already used within the workout exercise returns `409 Conflict`.
+
+Every set requires at least one primary performance metric: `reps`,
+`duration_seconds`, or `distance_meters`. `weight_kg`, `rpe`, and `notes` can
+supplement those metrics but cannot create a valid set on their own.
+
+Supported `set_type` values are:
+
+- `warmup`
+- `working`
+- `drop`
+- `failure`
+
+### List sets
+
+```bash
+curl \
+  "http://localhost:8000/workouts/<workout-id>/exercises/<workout-exercise-id>/sets?limit=20&offset=0" \
+  -H "Authorization: Bearer <access-token>"
+```
+
+### Get, update, or delete a set
+
+```bash
+curl \
+  http://localhost:8000/workouts/<workout-id>/exercises/<workout-exercise-id>/sets/<workout-set-id> \
+  -H "Authorization: Bearer <access-token>"
+
+curl -X PATCH \
+  http://localhost:8000/workouts/<workout-id>/exercises/<workout-exercise-id>/sets/<workout-set-id> \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reps": 9,
+    "weight_kg": 62.5,
+    "notes": "Progressive overload"
+  }'
+
+curl -X DELETE \
+  http://localhost:8000/workouts/<workout-id>/exercises/<workout-exercise-id>/sets/<workout-set-id> \
+  -H "Authorization: Bearer <access-token>"
+```
+
+Successful deletion returns `204 No Content`.
+
+Possible responses:
+
+| Status | Meaning                                                |
+| ------ | ------------------------------------------------------ |
+| `200`  | Workout set returned, listed, or updated               |
+| `201`  | Workout set created                                    |
+| `204`  | Workout set deleted                                    |
+| `401`  | Authentication is missing or invalid                   |
+| `404`  | Owned parent or workout set was not found              |
+| `409`  | Set number is already used for the workout exercise    |
+| `422`  | Request, metric, UUID, or pagination validation failed |
 
 ## Security decisions
 
@@ -530,9 +838,14 @@ Possible responses:
 - Authentication failures return consistent `401 Unauthorized` responses.
 - Workout ownership is enforced in database queries using both resource and
   authenticated-user UUIDs.
-- Missing and foreign workout UUIDs return the same `404 Not Found` response.
+- Child resource queries join through the owned workout session instead of
+  trusting client-supplied parent identifiers.
+- Missing and foreign workout, workout exercise, and workout set UUIDs return
+  the same `404 Not Found` responses.
 - Protected responses use explicit schemas that exclude ownership and password
   data.
+- Nested catalogue exercise data is eagerly loaded before async response
+  serialization.
 - Database constraints enforce training-domain invariants independently of the
   API validation layer.
 - Child workout records are deleted through database cascades.
@@ -541,15 +854,15 @@ Possible responses:
 
 ## Roadmap
 
-- Exercise catalogue API
-- Workout exercise and set CRUD
 - Refresh-token rotation and logout/revocation
 - Workout templates and reusable training plans
 - Body measurements and progress analytics
-- Dedicated PostgreSQL integration test suite
+- Automated PostgreSQL integration and E2E test suite
 - GitHub Actions CI pipeline
 - Production deployment
 
 ## Project status
 
-Sprint 4: training domain foundation and owner-scoped workout session CRUD.
+Sprint 5: protected exercise catalogue, idempotent exercise seeding, and
+owner-scoped workout exercise and workout set CRUD. The current baseline is
+186 passing automated tests plus a successful full Docker/PostgreSQL E2E flow.
