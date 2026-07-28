@@ -14,6 +14,12 @@ from app.schemas.workout_exercise import (
     WorkoutExerciseResponse,
     WorkoutExerciseUpdate,
 )
+from app.schemas.workout_set import (
+    WorkoutSetCreate,
+    WorkoutSetListResponse,
+    WorkoutSetResponse,
+    WorkoutSetUpdate,
+)
 
 __all__ = [
     "ErrorResponse",
@@ -31,4 +37,8 @@ __all__ = [
     "WorkoutExerciseListResponse",
     "WorkoutExerciseResponse",
     "WorkoutExerciseUpdate",
+    "WorkoutSetCreate",
+    "WorkoutSetListResponse",
+    "WorkoutSetResponse",
+    "WorkoutSetUpdate",
 ]

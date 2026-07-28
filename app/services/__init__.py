@@ -21,6 +21,15 @@ from app.services.workout_exercise import (
     list_owned_workout_exercises,
     update_workout_exercise,
 )
+from app.services.workout_set import (
+    WorkoutSetNumberConflictError,
+    WorkoutSetPerformanceMetricRequiredError,
+    create_workout_set,
+    delete_workout_set,
+    get_owned_workout_set,
+    list_owned_workout_sets,
+    update_workout_set,
+)
 
 __all__ = [
     "EmailAlreadyRegisteredError",
@@ -41,4 +50,11 @@ __all__ = [
     "get_owned_workout_exercise",
     "list_owned_workout_exercises",
     "update_workout_exercise",
+    "WorkoutSetNumberConflictError",
+    "WorkoutSetPerformanceMetricRequiredError",
+    "create_workout_set",
+    "delete_workout_set",
+    "get_owned_workout_set",
+    "list_owned_workout_sets",
+    "update_workout_set",
 ]

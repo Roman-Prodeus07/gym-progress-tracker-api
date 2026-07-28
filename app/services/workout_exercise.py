@@ -100,6 +100,10 @@ async def create_workout_exercise(
 
     await _commit_workout_exercise_change(session)
     await session.refresh(workout_exercise)
+    await session.refresh(
+        workout_exercise,
+        attribute_names=["exercise"],
+    )
 
     return workout_exercise
 
@@ -199,6 +203,10 @@ async def update_workout_exercise(
 
     await _commit_workout_exercise_change(session)
     await session.refresh(workout_exercise)
+    await session.refresh(
+        workout_exercise,
+        attribute_names=["exercise"],
+    )
 
     return workout_exercise
 

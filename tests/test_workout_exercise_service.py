@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, call
 from uuid import uuid4
 
 import pytest
@@ -88,7 +88,10 @@ async def test_create_workout_exercise_assigns_next_position() -> None:
     session.add.assert_called_once_with(result)
     session.commit.assert_awaited_once()
     session.rollback.assert_not_awaited()
-    session.refresh.assert_awaited_once_with(result)
+    assert session.refresh.await_args_list == [
+        call(result),
+        call(result, attribute_names=["exercise"]),
+    ]
 
 
 @pytest.mark.anyio
@@ -311,7 +314,10 @@ async def test_update_workout_exercise_applies_patch_and_commits() -> None:
     assert "exercises.is_active IS true" in str(exercise_statement)
     session.commit.assert_awaited_once()
     session.rollback.assert_not_awaited()
-    session.refresh.assert_awaited_once_with(workout_exercise)
+    assert session.refresh.await_args_list == [
+        call(workout_exercise),
+        call(workout_exercise, attribute_names=["exercise"]),
+    ]
 
 
 @pytest.mark.anyio

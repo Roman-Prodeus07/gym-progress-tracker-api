@@ -7,6 +7,7 @@ from app.api.routes.users import router as users_router
 from app.api.routes.workout_exercises import (
     router as workout_exercises_router,
 )
+from app.api.routes.workout_sets import router as workout_sets_router
 from app.api.routes.workouts import router as workouts_router
 
 api_router = APIRouter()
@@ -15,4 +16,5 @@ api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(exercises_router)
 api_router.include_router(workout_exercises_router)
+api_router.include_router(workout_sets_router)
 api_router.include_router(workouts_router)
