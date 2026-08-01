@@ -14,6 +14,8 @@ from pydantic import (
     model_validator,
 )
 
+from app.schemas.workout_exercise import WorkoutExerciseDetailResponse
+
 
 class WorkoutSessionCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -64,6 +66,11 @@ class WorkoutSessionResponse(BaseModel):
     created_at: AwareDatetime
     updated_at: AwareDatetime
 
+class WorkoutSessionDetailResponse(WorkoutSessionResponse):
+    exercises: list[WorkoutExerciseDetailResponse] = Field(
+        default_factory=list,
+        validation_alias="workout_exercises",
+    )
 
 class WorkoutSessionListResponse(BaseModel):
     items: list[WorkoutSessionResponse]

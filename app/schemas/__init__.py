@@ -20,12 +20,14 @@ from app.schemas.token import TokenPayload, TokenResponse
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.workout import (
     WorkoutSessionCreate,
+    WorkoutSessionDetailResponse,
     WorkoutSessionListResponse,
     WorkoutSessionResponse,
     WorkoutSessionUpdate,
 )
 from app.schemas.workout_exercise import (
     WorkoutExerciseCreate,
+    WorkoutExerciseDetailResponse,
     WorkoutExerciseListResponse,
     WorkoutExerciseResponse,
     WorkoutExerciseUpdate,
@@ -46,10 +48,12 @@ __all__ = [
     "UserCreate",
     "UserResponse",
     "WorkoutSessionCreate",
+    "WorkoutSessionDetailResponse",
     "WorkoutSessionListResponse",
     "WorkoutSessionResponse",
     "WorkoutSessionUpdate",
     "WorkoutExerciseCreate",
+    "WorkoutExerciseDetailResponse",
     "WorkoutExerciseListResponse",
     "WorkoutExerciseResponse",
     "MAX_PROGRESS_RANGE_DAYS",

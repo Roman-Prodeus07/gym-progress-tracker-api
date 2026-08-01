@@ -15,6 +15,7 @@ from pydantic import (
 )
 
 from app.schemas.exercise import ExerciseResponse
+from app.schemas.workout_set import WorkoutSetResponse
 
 
 class WorkoutExerciseCreate(BaseModel):
@@ -70,6 +71,12 @@ class WorkoutExerciseResponse(BaseModel):
     notes: str | None
     created_at: AwareDatetime
     updated_at: AwareDatetime
+
+class WorkoutExerciseDetailResponse(WorkoutExerciseResponse):
+    sets: list[WorkoutSetResponse] = Field(
+        default_factory=list,
+        validation_alias="workout_sets",
+    )
 
 
 class WorkoutExerciseListResponse(BaseModel):
