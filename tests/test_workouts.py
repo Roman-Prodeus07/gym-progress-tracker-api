@@ -33,6 +33,52 @@ def make_workout(
     )
 
 
+def make_workout_detail(
+    user_id: UUID,
+) -> tuple[SimpleNamespace, SimpleNamespace, SimpleNamespace]:
+    workout = make_workout(user_id)
+    now = workout.created_at
+
+    exercise = SimpleNamespace(
+        id=uuid4(),
+        name="Bench Press",
+        slug="bench-press",
+        description="Chest compound exercise.",
+        primary_muscle_group="chest",
+        equipment="barbell",
+        created_at=now,
+        updated_at=now,
+    )
+    workout_set = SimpleNamespace(
+        id=uuid4(),
+        set_number=1,
+        set_type="working",
+        reps=10,
+        weight_kg=None,
+        duration_seconds=None,
+        distance_meters=None,
+        rpe=None,
+        notes=None,
+        created_at=now,
+        updated_at=now,
+    )
+    workout_exercise = SimpleNamespace(
+        id=uuid4(),
+        exercise_id=exercise.id,
+        exercise=exercise,
+        position=1,
+        rest_seconds=120,
+        notes=None,
+        created_at=now,
+        updated_at=now,
+        workout_sets=[workout_set],
+    )
+
+    workout.workout_exercises = [workout_exercise]
+
+    return workout, workout_exercise, workout_set
+
+
 @pytest.fixture
 def authenticated_client() -> Iterator[tuple[TestClient, SimpleNamespace]]:
     current_user = SimpleNamespace(id=uuid4())
@@ -151,14 +197,16 @@ def test_list_workouts_returns_owner_page(
     ]
 
 
-def test_get_workout_returns_owned_workout(
+def test_get_workout_returns_owned_workout_detail(
     authenticated_client: tuple[TestClient, SimpleNamespace],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, current_user = authenticated_client
-    workout = make_workout(current_user.id)
+    workout, workout_exercise, workout_set = make_workout_detail(
+        current_user.id
+    )
 
-    async def fake_get_owned_workout(
+    async def fake_get_owned_workout_detail(
         session: object,
         workout_id: UUID,
         user_id: UUID,
@@ -170,14 +218,33 @@ def test_get_workout_returns_owned_workout(
 
     monkeypatch.setattr(
         workout_routes,
-        "get_owned_workout_session_service",
-        fake_get_owned_workout,
+        "get_owned_workout_session_detail_service",
+        fake_get_owned_workout_detail,
     )
 
     response = client.get(f"/workouts/{workout.id}")
 
     assert response.status_code == 200
-    assert response.json()["id"] == str(workout.id)
+
+    response_data = response.json()
+
+    assert response_data["id"] == str(workout.id)
+    assert len(response_data["exercises"]) == 1
+
+    exercise_data = response_data["exercises"][0]
+
+    assert exercise_data["id"] == str(workout_exercise.id)
+    assert exercise_data["position"] == 1
+    assert exercise_data["exercise"]["name"] == "Bench Press"
+    assert exercise_data["exercise"]["slug"] == "bench-press"
+    assert len(exercise_data["sets"]) == 1
+
+    set_data = exercise_data["sets"][0]
+
+    assert set_data["id"] == str(workout_set.id)
+    assert set_data["set_number"] == 1
+    assert set_data["set_type"] == "working"
+    assert set_data["reps"] == 10
 
 
 @pytest.mark.parametrize(
@@ -207,6 +274,11 @@ def test_workout_endpoints_hide_missing_or_unowned_workout(
     monkeypatch.setattr(
         workout_routes,
         "get_owned_workout_session_service",
+        fake_get_owned_workout,
+    )
+    monkeypatch.setattr(
+        workout_routes,
+        "get_owned_workout_session_detail_service",
         fake_get_owned_workout,
     )
 
@@ -421,6 +493,24 @@ def test_workout_openapi_documents_security_and_responses() -> None:
     assert "404" in item_operations["get"]["responses"]
     assert "404" in item_operations["patch"]["responses"]
     assert "204" in item_operations["delete"]["responses"]
+
+    get_response_schema = item_operations["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+
+    assert get_response_schema == {
+        "$ref": "#/components/schemas/WorkoutSessionDetailResponse"
+    }
+
+    detail_response_properties = schema["components"]["schemas"][
+        "WorkoutSessionDetailResponse"
+    ]["properties"]
+    workout_exercise_detail_properties = schema["components"]["schemas"][
+        "WorkoutExerciseDetailResponse"
+    ]["properties"]
+
+    assert "exercises" in detail_response_properties
+    assert "sets" in workout_exercise_detail_properties
 
     response_properties = schema["components"]["schemas"]["WorkoutSessionResponse"][
         "properties"

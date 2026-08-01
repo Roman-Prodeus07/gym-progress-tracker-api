@@ -4,8 +4,9 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.models import WorkoutSession
+from app.models import WorkoutExercise, WorkoutSession
 from app.schemas import WorkoutSessionCreate, WorkoutSessionUpdate
 
 
@@ -75,6 +76,26 @@ async def get_owned_workout_session(
         )
     )
 
+async def get_owned_workout_session_detail(
+    session: AsyncSession,
+    workout_id: UUID,
+    user_id: UUID,
+) -> WorkoutSession | None:
+    return await session.scalar(
+        select(WorkoutSession)
+        .where(
+            WorkoutSession.id == workout_id,
+            WorkoutSession.user_id == user_id,
+        )
+        .options(
+            selectinload(WorkoutSession.workout_exercises).selectinload(
+                WorkoutExercise.exercise
+            ),
+            selectinload(WorkoutSession.workout_exercises).selectinload(
+                WorkoutExercise.workout_sets
+            ),
+        )
+    )
 
 async def update_workout_session(
     session: AsyncSession,

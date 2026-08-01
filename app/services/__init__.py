@@ -28,6 +28,7 @@ from app.services.workout import (
     create_workout_session,
     delete_workout_session,
     get_owned_workout_session,
+    get_owned_workout_session_detail,
     list_workout_sessions,
     update_workout_session,
 )
@@ -58,6 +59,7 @@ __all__ = [
     "delete_workout_session",
     "get_active_exercise",
     "get_owned_workout_session",
+    "get_owned_workout_session_detail",
     "list_active_exercises",
     "list_workout_sessions",
     "register_user",

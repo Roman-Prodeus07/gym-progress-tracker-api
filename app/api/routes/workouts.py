@@ -17,6 +17,7 @@ from app.models import User, WorkoutSession
 from app.schemas import (
     ErrorResponse,
     WorkoutSessionCreate,
+    WorkoutSessionDetailResponse,
     WorkoutSessionListResponse,
     WorkoutSessionResponse,
     WorkoutSessionUpdate,
@@ -26,6 +27,9 @@ from app.services import create_workout_session as create_workout_session_servic
 from app.services import delete_workout_session as delete_workout_session_service
 from app.services import (
     get_owned_workout_session as get_owned_workout_session_service,
+)
+from app.services import (
+    get_owned_workout_session_detail as get_owned_workout_session_detail_service,
 )
 from app.services import list_workout_sessions as list_workout_sessions_service
 from app.services import update_workout_session as update_workout_session_service
@@ -51,6 +55,25 @@ async def _get_owned_workout_or_404(
     user_id: UUID,
 ) -> WorkoutSession:
     workout = await get_owned_workout_session_service(
+        session,
+        workout_id,
+        user_id,
+    )
+
+    if workout is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=WORKOUT_NOT_FOUND_DETAIL,
+        )
+
+    return workout
+
+async def _get_owned_workout_detail_or_404(
+    session: AsyncSession,
+    workout_id: UUID,
+    user_id: UUID,
+) -> WorkoutSession:
+    workout = await get_owned_workout_session_detail_service(
         session,
         workout_id,
         user_id,
@@ -113,7 +136,7 @@ async def list_workouts(
 
 @router.get(
     "/{workout_id}",
-    response_model=WorkoutSessionResponse,
+    response_model=WorkoutSessionDetailResponse,
     summary="Get a workout session",
     responses={
         status.HTTP_404_NOT_FOUND: {
@@ -126,14 +149,14 @@ async def get_workout(
     workout_id: UUID,
     session: Annotated[AsyncSession, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> WorkoutSessionResponse:
-    workout = await _get_owned_workout_or_404(
+) -> WorkoutSessionDetailResponse:
+    workout = await _get_owned_workout_detail_or_404(
         session,
         workout_id,
         current_user.id,
     )
 
-    return WorkoutSessionResponse.model_validate(workout)
+    return WorkoutSessionDetailResponse.model_validate(workout)
 
 
 @router.patch(
