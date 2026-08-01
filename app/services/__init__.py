@@ -1,5 +1,24 @@
 from app.services.auth import authenticate_user
 from app.services.exercise import get_active_exercise, list_active_exercises
+from app.services.progress_calculations import (
+    DISTANCE_QUANTUM,
+    PERSONAL_RECORD_SET_TYPES,
+    RPE_QUANTUM,
+    THREE_PLACE_QUANTUM,
+    WORKLOAD_SET_TYPES,
+    calculate_decimal_average,
+    calculate_estimated_1rm,
+    calculate_load_volume,
+    calculate_pace_seconds_per_km,
+    round_decimal,
+)
+from app.services.progress_time import (
+    UTCDateRange,
+    build_bucket_starts,
+    get_bucket_start,
+    get_next_bucket_start,
+    local_date_range_to_utc,
+)
 from app.services.user import (
     EmailAlreadyRegisteredError,
     register_user,
@@ -57,4 +76,19 @@ __all__ = [
     "get_owned_workout_set",
     "list_owned_workout_sets",
     "update_workout_set",
+    "DISTANCE_QUANTUM",
+    "PERSONAL_RECORD_SET_TYPES",
+    "RPE_QUANTUM",
+    "THREE_PLACE_QUANTUM",
+    "UTCDateRange",
+    "WORKLOAD_SET_TYPES",
+    "build_bucket_starts",
+    "calculate_decimal_average",
+    "calculate_estimated_1rm",
+    "calculate_load_volume",
+    "calculate_pace_seconds_per_km",
+    "get_bucket_start",
+    "get_next_bucket_start",
+    "local_date_range_to_utc",
+    "round_decimal",
 ]

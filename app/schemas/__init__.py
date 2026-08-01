@@ -1,5 +1,21 @@
 from app.schemas.common import ErrorResponse
 from app.schemas.exercise import ExerciseListResponse, ExerciseResponse
+from app.schemas.progress import (
+    MAX_PROGRESS_RANGE_DAYS,
+    ExerciseProgressPointResponse,
+    ExerciseProgressResponse,
+    PersonalRecordListResponse,
+    PersonalRecordResponse,
+    PersonalRecordType,
+    ProgressAggregateResponse,
+    ProgressBucket,
+    ProgressBucketResponse,
+    ProgressDateRangeParams,
+    ProgressPeriodResponse,
+    ProgressSummaryPeriodResponse,
+    ProgressSummaryQuery,
+    ProgressSummaryResponse,
+)
 from app.schemas.token import TokenPayload, TokenResponse
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.workout import (
@@ -36,6 +52,20 @@ __all__ = [
     "WorkoutExerciseCreate",
     "WorkoutExerciseListResponse",
     "WorkoutExerciseResponse",
+    "MAX_PROGRESS_RANGE_DAYS",
+    "ExerciseProgressPointResponse",
+    "ExerciseProgressResponse",
+    "PersonalRecordListResponse",
+    "PersonalRecordResponse",
+    "PersonalRecordType",
+    "ProgressAggregateResponse",
+    "ProgressBucket",
+    "ProgressBucketResponse",
+    "ProgressDateRangeParams",
+    "ProgressPeriodResponse",
+    "ProgressSummaryPeriodResponse",
+    "ProgressSummaryQuery",
+    "ProgressSummaryResponse",
     "WorkoutExerciseUpdate",
     "WorkoutSetCreate",
     "WorkoutSetListResponse",
