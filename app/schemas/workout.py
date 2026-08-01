@@ -66,11 +66,31 @@ class WorkoutSessionResponse(BaseModel):
     created_at: AwareDatetime
     updated_at: AwareDatetime
 
+
 class WorkoutSessionDetailResponse(WorkoutSessionResponse):
     exercises: list[WorkoutExerciseDetailResponse] = Field(
         default_factory=list,
         validation_alias="workout_exercises",
     )
+
+
+class WorkoutSessionListQuery(BaseModel):
+    limit: Annotated[int, Field(ge=1, le=100)] = 20
+    offset: Annotated[int, Field(ge=0)] = 0
+    started_from: AwareDatetime | None = None
+    started_to: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def validate_started_at_range(self) -> WorkoutSessionListQuery:
+        if (
+            self.started_from is not None
+            and self.started_to is not None
+            and self.started_to < self.started_from
+        ):
+            raise ValueError("started_to cannot be earlier than started_from.")
+
+        return self
+
 
 class WorkoutSessionListResponse(BaseModel):
     items: list[WorkoutSessionResponse]

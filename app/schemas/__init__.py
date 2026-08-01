@@ -21,6 +21,7 @@ from app.schemas.user import UserCreate, UserResponse
 from app.schemas.workout import (
     WorkoutSessionCreate,
     WorkoutSessionDetailResponse,
+    WorkoutSessionListQuery,
     WorkoutSessionListResponse,
     WorkoutSessionResponse,
     WorkoutSessionUpdate,
@@ -49,6 +50,7 @@ __all__ = [
     "UserResponse",
     "WorkoutSessionCreate",
     "WorkoutSessionDetailResponse",
+    "WorkoutSessionListQuery",
     "WorkoutSessionListResponse",
     "WorkoutSessionResponse",
     "WorkoutSessionUpdate",

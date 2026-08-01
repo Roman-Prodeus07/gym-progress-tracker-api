@@ -163,11 +163,16 @@ def test_list_workouts_returns_owner_page(
         user_id: UUID,
         limit: int,
         offset: int,
+        *,
+        started_from: datetime | None = None,
+        started_to: datetime | None = None,
     ) -> tuple[list[SimpleNamespace], int]:
         assert session is not None
         assert user_id == current_user.id
         assert limit == 10
         assert offset == 5
+        assert started_from is None
+        assert started_to is None
         return workouts, 2
 
     monkeypatch.setattr(
@@ -197,14 +202,142 @@ def test_list_workouts_returns_owner_page(
     ]
 
 
+def test_list_workouts_forwards_started_at_range(
+    authenticated_client: tuple[TestClient, SimpleNamespace],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, current_user = authenticated_client
+    expected_started_from = datetime(2026, 7, 1, tzinfo=UTC)
+    expected_started_to = datetime(2026, 7, 31, 23, 59, 59, tzinfo=UTC)
+
+    async def fake_list_workouts(
+        session: object,
+        user_id: UUID,
+        limit: int,
+        offset: int,
+        *,
+        started_from: datetime | None = None,
+        started_to: datetime | None = None,
+    ) -> tuple[list[SimpleNamespace], int]:
+        assert session is not None
+        assert user_id == current_user.id
+        assert limit == 20
+        assert offset == 0
+        assert started_from == expected_started_from
+        assert started_to == expected_started_to
+        return [], 0
+
+    monkeypatch.setattr(
+        workout_routes,
+        "list_workout_sessions_service",
+        fake_list_workouts,
+    )
+
+    response = client.get(
+        "/workouts",
+        params={
+            "started_from": expected_started_from.isoformat(),
+            "started_to": expected_started_to.isoformat(),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "total": 0,
+        "limit": 20,
+        "offset": 0,
+    }
+
+
+def test_list_workouts_rejects_reversed_started_at_range(
+    authenticated_client: tuple[TestClient, SimpleNamespace],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = authenticated_client
+    list_service = AsyncMock()
+
+    monkeypatch.setattr(
+        workout_routes,
+        "list_workout_sessions_service",
+        list_service,
+    )
+
+    response = client.get(
+        "/workouts",
+        params={
+            "started_from": "2026-07-31T00:00:00Z",
+            "started_to": "2026-07-01T00:00:00Z",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "started_to cannot be earlier than started_from." in response.text
+    list_service.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "parameter_name",
+    ["started_from", "started_to"],
+)
+def test_list_workouts_rejects_timezone_naive_started_at_filter(
+    authenticated_client: tuple[TestClient, SimpleNamespace],
+    monkeypatch: pytest.MonkeyPatch,
+    parameter_name: str,
+) -> None:
+    client, _ = authenticated_client
+    list_service = AsyncMock()
+
+    monkeypatch.setattr(
+        workout_routes,
+        "list_workout_sessions_service",
+        list_service,
+    )
+
+    response = client.get(
+        "/workouts",
+        params={parameter_name: "2026-07-01T12:00:00"},
+    )
+
+    assert response.status_code == 422
+    list_service.assert_not_awaited()
+
+
+def test_list_workouts_accepts_equal_started_at_bounds(
+    authenticated_client: tuple[TestClient, SimpleNamespace],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = authenticated_client
+    expected_timestamp = datetime(2026, 7, 1, 12, tzinfo=UTC)
+    list_service = AsyncMock(return_value=([], 0))
+
+    monkeypatch.setattr(
+        workout_routes,
+        "list_workout_sessions_service",
+        list_service,
+    )
+
+    response = client.get(
+        "/workouts",
+        params={
+            "started_from": expected_timestamp.isoformat(),
+            "started_to": expected_timestamp.isoformat(),
+        },
+    )
+
+    assert response.status_code == 200
+    assert list_service.await_args.kwargs == {
+        "started_from": expected_timestamp,
+        "started_to": expected_timestamp,
+    }
+
+
 def test_get_workout_returns_owned_workout_detail(
     authenticated_client: tuple[TestClient, SimpleNamespace],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, current_user = authenticated_client
-    workout, workout_exercise, workout_set = make_workout_detail(
-        current_user.id
-    )
+    workout, workout_exercise, workout_set = make_workout_detail(current_user.id)
 
     async def fake_get_owned_workout_detail(
         session: object,

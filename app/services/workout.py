@@ -42,16 +42,25 @@ async def list_workout_sessions(
     user_id: UUID,
     limit: int,
     offset: int,
+    *,
+    started_from: datetime | None = None,
+    started_to: datetime | None = None,
 ) -> tuple[list[WorkoutSession], int]:
-    ownership_filter = WorkoutSession.user_id == user_id
+    workout_filters = [WorkoutSession.user_id == user_id]
+
+    if started_from is not None:
+        workout_filters.append(WorkoutSession.started_at >= started_from)
+
+    if started_to is not None:
+        workout_filters.append(WorkoutSession.started_at <= started_to)
 
     total = await session.scalar(
-        select(func.count()).select_from(WorkoutSession).where(ownership_filter)
+        select(func.count()).select_from(WorkoutSession).where(*workout_filters)
     )
 
     result = await session.scalars(
         select(WorkoutSession)
-        .where(ownership_filter)
+        .where(*workout_filters)
         .order_by(
             WorkoutSession.started_at.desc(),
             WorkoutSession.created_at.desc(),
@@ -76,6 +85,7 @@ async def get_owned_workout_session(
         )
     )
 
+
 async def get_owned_workout_session_detail(
     session: AsyncSession,
     workout_id: UUID,
@@ -96,6 +106,7 @@ async def get_owned_workout_session_detail(
             ),
         )
     )
+
 
 async def update_workout_session(
     session: AsyncSession,

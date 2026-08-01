@@ -72,6 +72,7 @@ class WorkoutExerciseResponse(BaseModel):
     created_at: AwareDatetime
     updated_at: AwareDatetime
 
+
 class WorkoutExerciseDetailResponse(WorkoutExerciseResponse):
     sets: list[WorkoutSetResponse] = Field(
         default_factory=list,

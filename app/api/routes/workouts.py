@@ -18,6 +18,7 @@ from app.schemas import (
     ErrorResponse,
     WorkoutSessionCreate,
     WorkoutSessionDetailResponse,
+    WorkoutSessionListQuery,
     WorkoutSessionListResponse,
     WorkoutSessionResponse,
     WorkoutSessionUpdate,
@@ -68,6 +69,7 @@ async def _get_owned_workout_or_404(
 
     return workout
 
+
 async def _get_owned_workout_detail_or_404(
     session: AsyncSession,
     workout_id: UUID,
@@ -116,21 +118,22 @@ async def create_workout(
 async def list_workouts(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    query: Annotated[WorkoutSessionListQuery, Query()],
 ) -> WorkoutSessionListResponse:
     workouts, total = await list_workout_sessions_service(
         session,
         current_user.id,
-        limit,
-        offset,
+        query.limit,
+        query.offset,
+        started_from=query.started_from,
+        started_to=query.started_to,
     )
 
     return WorkoutSessionListResponse(
         items=[WorkoutSessionResponse.model_validate(workout) for workout in workouts],
         total=total,
-        limit=limit,
-        offset=offset,
+        limit=query.limit,
+        offset=query.offset,
     )
 
 
