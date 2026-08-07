@@ -13,11 +13,14 @@ from app.api.routes import progress as progress_routes
 from app.db.session import get_db_session
 from app.main import app
 from app.schemas import (
+    ExerciseProgressPointResponse,
+    ExerciseProgressResponse,
     PersonalRecordResponse,
     PersonalRecordType,
     ProgressAggregateResponse,
     ProgressBucket,
     ProgressBucketResponse,
+    ProgressPeriodResponse,
     ProgressSummaryPeriodResponse,
     ProgressSummaryResponse,
 )
@@ -69,6 +72,36 @@ def _summary_response() -> ProgressSummaryResponse:
             ProgressBucketResponse(
                 bucket_start=date(2026, 3, 29),
                 **totals.model_dump(),
+            )
+        ],
+    )
+
+
+def _exercise_progress_response() -> ExerciseProgressResponse:
+    return ExerciseProgressResponse(
+        exercise_id=uuid4(),
+        exercise_name="Bench Press",
+        period=ProgressPeriodResponse(
+            date_from=date(2026, 3, 29),
+            date_to=date(2026, 3, 29),
+            timezone="Europe/London",
+        ),
+        points=[
+            ExerciseProgressPointResponse(
+                workout_id=uuid4(),
+                started_at=datetime(2026, 3, 29, 10, 0, tzinfo=UTC),
+                work_set_count=3,
+                max_weight_kg=Decimal("100.000"),
+                max_reps=8,
+                max_set_volume=Decimal("800.000"),
+                estimated_1rm_kg=Decimal("126.667"),
+                total_load_volume=Decimal("2200.000"),
+                max_distance_meters=None,
+                total_distance_meters=Decimal("0.00"),
+                longest_duration_seconds=None,
+                timed_set_duration_seconds=0,
+                best_pace_seconds_per_km=None,
+                average_rpe=Decimal("8.5"),
             )
         ],
     )
@@ -199,6 +232,147 @@ def test_get_progress_summary_rejects_invalid_query(
 
     assert response.status_code == 422
     summary_service.assert_not_awaited()
+
+
+def test_get_exercise_progress_requires_authentication() -> None:
+    with TestClient(app) as client:
+        response = client.get(
+            f"/progress/exercises/{uuid4()}",
+            params={
+                "date_from": "2026-03-29",
+                "date_to": "2026-03-29",
+            },
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Not authenticated"}
+
+
+def test_get_exercise_progress_returns_owner_history_and_forwards_query(
+    authenticated_client: tuple[TestClient, SimpleNamespace],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, current_user = authenticated_client
+    progress = _exercise_progress_response()
+    progress_service = AsyncMock(return_value=progress)
+    monkeypatch.setattr(
+        progress_routes,
+        "get_exercise_progress_service",
+        progress_service,
+    )
+
+    response = client.get(
+        f"/progress/exercises/{progress.exercise_id}",
+        params={
+            "date_from": "2026-03-29",
+            "date_to": "2026-03-29",
+            "timezone": "Europe/London",
+        },
+    )
+
+    assert response.status_code == 200
+    response_data = response.json()
+    assert response_data["exercise_id"] == str(progress.exercise_id)
+    assert response_data["exercise_name"] == "Bench Press"
+    assert response_data["period"] == {
+        "date_from": "2026-03-29",
+        "date_to": "2026-03-29",
+        "timezone": "Europe/London",
+    }
+    assert len(response_data["points"]) == 1
+    assert response_data["points"][0]["max_weight_kg"] == "100.000"
+    assert response_data["points"][0]["total_load_volume"] == "2200.000"
+
+    service_session, service_user_id, service_exercise_id, service_query = (
+        progress_service.await_args.args
+    )
+    assert service_session is not None
+    assert service_user_id == current_user.id
+    assert service_exercise_id == progress.exercise_id
+    assert service_query.date_from == date(2026, 3, 29)
+    assert service_query.date_to == date(2026, 3, 29)
+    assert service_query.timezone == "Europe/London"
+
+
+def test_get_exercise_progress_returns_404_for_unknown_exercise(
+    authenticated_client: tuple[TestClient, SimpleNamespace],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = authenticated_client
+    progress_service = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        progress_routes,
+        "get_exercise_progress_service",
+        progress_service,
+    )
+
+    response = client.get(
+        f"/progress/exercises/{uuid4()}",
+        params={
+            "date_from": "2026-04-01",
+            "date_to": "2026-04-01",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Exercise not found."}
+
+
+@pytest.mark.parametrize(
+    ("exercise_id", "params"),
+    [
+        (
+            str(uuid4()),
+            {
+                "date_from": "2026-04-02",
+                "date_to": "2026-04-01",
+            },
+        ),
+        (
+            str(uuid4()),
+            {
+                "date_from": "2024-01-01",
+                "date_to": "2025-01-01",
+            },
+        ),
+        (
+            str(uuid4()),
+            {
+                "date_from": "2026-04-01",
+                "date_to": "2026-04-02",
+                "timezone": "Not/A_Timezone",
+            },
+        ),
+        (
+            "not-a-uuid",
+            {
+                "date_from": "2026-04-01",
+                "date_to": "2026-04-02",
+            },
+        ),
+    ],
+)
+def test_get_exercise_progress_rejects_invalid_request(
+    authenticated_client: tuple[TestClient, SimpleNamespace],
+    monkeypatch: pytest.MonkeyPatch,
+    exercise_id: str,
+    params: dict[str, str],
+) -> None:
+    client, _ = authenticated_client
+    progress_service = AsyncMock()
+    monkeypatch.setattr(
+        progress_routes,
+        "get_exercise_progress_service",
+        progress_service,
+    )
+
+    response = client.get(
+        f"/progress/exercises/{exercise_id}",
+        params=params,
+    )
+
+    assert response.status_code == 422
+    progress_service.assert_not_awaited()
 
 
 def test_list_personal_records_requires_authentication() -> None:

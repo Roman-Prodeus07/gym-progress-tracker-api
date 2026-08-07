@@ -1,5 +1,9 @@
 from app.services.auth import authenticate_user
 from app.services.exercise import get_active_exercise, list_active_exercises
+from app.services.exercise_progress import (
+    build_exercise_progress,
+    get_exercise_progress,
+)
 from app.services.personal_record import (
     list_personal_records,
     select_personal_records,
@@ -66,6 +70,7 @@ __all__ = [
     "create_workout_session",
     "delete_workout_session",
     "get_active_exercise",
+    "get_exercise_progress",
     "get_owned_workout_session",
     "get_owned_workout_session_detail",
     "list_active_exercises",
@@ -93,6 +98,7 @@ __all__ = [
     "UTCDateRange",
     "WORKLOAD_SET_TYPES",
     "build_bucket_starts",
+    "build_exercise_progress",
     "build_progress_summary",
     "calculate_decimal_average",
     "calculate_estimated_1rm",
