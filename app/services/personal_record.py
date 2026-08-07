@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from typing import Protocol, cast
 from uuid import UUID
 
@@ -11,13 +11,12 @@ from app.models import Exercise, WorkoutExercise, WorkoutSession, WorkoutSet
 from app.schemas import PersonalRecordResponse, PersonalRecordType
 from app.services.progress_calculations import (
     PERSONAL_RECORD_SET_TYPES,
+    THREE_PLACE_QUANTUM,
     ZERO,
+    calculate_estimated_1rm,
+    calculate_pace_seconds_per_km,
+    round_decimal,
 )
-
-ONE = Decimal("1")
-THIRTY = Decimal("30")
-METERS_PER_KILOMETER = Decimal("1000")
-THREE_DECIMAL_PLACES = Decimal("0.001")
 
 
 class PersonalRecordCandidate(Protocol):
@@ -45,18 +44,6 @@ def _tie_break_key(
         candidate.position,
         candidate.set_number,
         str(candidate.workout_set_id),
-    )
-
-
-def _calculate_estimated_1rm(
-    weight_kg: Decimal,
-    reps: int,
-) -> Decimal:
-    estimated_1rm = weight_kg * (ONE + Decimal(reps) / THIRTY)
-
-    return estimated_1rm.quantize(
-        THREE_DECIMAL_PLACES,
-        rounding=ROUND_HALF_UP,
     )
 
 
@@ -153,19 +140,11 @@ def select_personal_records(
                     candidate,
                 )
 
-        if (
-            duration_seconds is not None
-            and duration_seconds > 0
-            and distance_meters is not None
-            and distance_meters > ZERO
-        ):
-            pace = (
-                Decimal(duration_seconds) * METERS_PER_KILOMETER / distance_meters
-            ).quantize(
-                THREE_DECIMAL_PLACES,
-                rounding=ROUND_HALF_UP,
-            )
-
+        pace = calculate_pace_seconds_per_km(
+            distance_meters,
+            duration_seconds,
+        )
+        if pace is not None:
             current_pace = best_pace_by_exercise.get(candidate.exercise_id)
 
             if (
@@ -202,26 +181,28 @@ def select_personal_records(
                 candidate,
             )
 
-        estimated_1rm = _calculate_estimated_1rm(
+        estimated_1rm = calculate_estimated_1rm(
             weight_kg,
             reps,
         )
-        current_estimated_1rm = best_estimated_1rm_by_exercise.get(
-            candidate.exercise_id
-        )
+        if estimated_1rm is not None:
+            current_estimated_1rm = best_estimated_1rm_by_exercise.get(
+                candidate.exercise_id
+            )
 
-        if (
-            current_estimated_1rm is None
-            or estimated_1rm > current_estimated_1rm[0]
-            or (
-                estimated_1rm == current_estimated_1rm[0]
-                and _tie_break_key(candidate) < _tie_break_key(current_estimated_1rm[1])
-            )
-        ):
-            best_estimated_1rm_by_exercise[candidate.exercise_id] = (
-                estimated_1rm,
-                candidate,
-            )
+            if (
+                current_estimated_1rm is None
+                or estimated_1rm > current_estimated_1rm[0]
+                or (
+                    estimated_1rm == current_estimated_1rm[0]
+                    and _tie_break_key(candidate)
+                    < _tie_break_key(current_estimated_1rm[1])
+                )
+            ):
+                best_estimated_1rm_by_exercise[candidate.exercise_id] = (
+                    estimated_1rm,
+                    candidate,
+                )
 
         current_weight = best_weight_by_exercise.get(candidate.exercise_id)
 
@@ -297,7 +278,10 @@ def select_personal_records(
             exercise_id=candidate.exercise_id,
             exercise_name=candidate.exercise_name,
             record_type=PersonalRecordType.ESTIMATED_1RM,
-            value=estimated_1rm,
+            value=round_decimal(
+                estimated_1rm,
+                THREE_PLACE_QUANTUM,
+            ),
             workout_id=candidate.workout_id,
             workout_exercise_id=candidate.workout_exercise_id,
             workout_set_id=candidate.workout_set_id,
@@ -351,7 +335,10 @@ def select_personal_records(
             exercise_id=candidate.exercise_id,
             exercise_name=candidate.exercise_name,
             record_type=PersonalRecordType.BEST_PACE,
-            value=pace,
+            value=round_decimal(
+                pace,
+                THREE_PLACE_QUANTUM,
+            ),
             workout_id=candidate.workout_id,
             workout_exercise_id=candidate.workout_exercise_id,
             workout_set_id=candidate.workout_set_id,

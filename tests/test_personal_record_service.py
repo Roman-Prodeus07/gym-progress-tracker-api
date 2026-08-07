@@ -290,6 +290,61 @@ def test_select_personal_records_selects_highest_estimated_1rm() -> None:
     assert estimated_1rm_record.weight_kg == Decimal("100.000")
 
 
+def test_select_personal_records_limits_estimated_1rm_to_twelve_reps() -> None:
+    exercise_id = uuid4()
+    base_time = datetime(2026, 7, 1, 10, 0, tzinfo=UTC)
+
+    eligible_set = _candidate(
+        exercise_id=exercise_id,
+        started_at=base_time,
+        reps=12,
+        weight_kg=Decimal("100.000"),
+    )
+    ineligible_high_rep_set = _candidate(
+        exercise_id=exercise_id,
+        started_at=base_time + timedelta(days=1),
+        reps=20,
+        weight_kg=Decimal("100.000"),
+    )
+
+    records = select_personal_records([eligible_set, ineligible_high_rep_set])
+    records_by_type = {record.record_type: record for record in records}
+
+    estimated_1rm_record = records_by_type[PersonalRecordType.ESTIMATED_1RM]
+
+    assert estimated_1rm_record.value == Decimal("140.000")
+    assert estimated_1rm_record.workout_set_id == eligible_set.workout_set_id
+    assert records_by_type[PersonalRecordType.MAX_REPS].value == Decimal("20")
+
+
+def test_select_personal_records_ranks_estimated_1rm_before_rounding() -> None:
+    exercise_id = uuid4()
+    base_time = datetime(2026, 7, 1, 10, 0, tzinfo=UTC)
+
+    earlier_lower_set = _candidate(
+        exercise_id=exercise_id,
+        started_at=base_time,
+        reps=9,
+        weight_kg=Decimal("1.025"),
+    )
+    later_higher_set = _candidate(
+        exercise_id=exercise_id,
+        started_at=base_time + timedelta(days=1),
+        reps=10,
+        weight_kg=Decimal("1.000"),
+    )
+
+    records = select_personal_records([earlier_lower_set, later_higher_set])
+    estimated_1rm_record = next(
+        record
+        for record in records
+        if record.record_type is PersonalRecordType.ESTIMATED_1RM
+    )
+
+    assert estimated_1rm_record.value == Decimal("1.333")
+    assert estimated_1rm_record.workout_set_id == later_higher_set.workout_set_id
+
+
 def test_select_personal_records_selects_max_distance() -> None:
     exercise_id = uuid4()
     base_time = datetime(2026, 7, 1, 10, 0, tzinfo=UTC)
@@ -461,6 +516,38 @@ def test_select_personal_records_selects_best_pace() -> None:
     assert pace_record.achieved_at == best_pace_set.started_at
     assert pace_record.duration_seconds == 1500
     assert pace_record.distance_meters == Decimal("5000.000")
+
+
+def test_select_personal_records_ranks_best_pace_before_rounding() -> None:
+    exercise_id = uuid4()
+    base_time = datetime(2026, 7, 1, 10, 0, tzinfo=UTC)
+
+    earlier_slower_set = _candidate(
+        exercise_id=exercise_id,
+        started_at=base_time,
+        reps=None,
+        weight_kg=None,
+        duration_seconds=300,
+        distance_meters=Decimal("1000.00"),
+    )
+    later_faster_set = _candidate(
+        exercise_id=exercise_id,
+        started_at=base_time + timedelta(days=1),
+        reps=None,
+        weight_kg=None,
+        duration_seconds=602,
+        distance_meters=Decimal("2006.67"),
+    )
+
+    records = select_personal_records([earlier_slower_set, later_faster_set])
+    best_pace_record = next(
+        record
+        for record in records
+        if record.record_type is PersonalRecordType.BEST_PACE
+    )
+
+    assert best_pace_record.value == Decimal("300.000")
+    assert best_pace_record.workout_set_id == later_faster_set.workout_set_id
 
 
 @pytest.mark.anyio
