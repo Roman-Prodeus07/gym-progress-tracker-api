@@ -6,7 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_current_user
 from app.db.session import get_db_session
 from app.models import User
-from app.schemas import ErrorResponse, PersonalRecordListResponse
+from app.schemas import (
+    ErrorResponse,
+    PersonalRecordListResponse,
+    ProgressSummaryQuery,
+    ProgressSummaryResponse,
+)
+from app.services import get_progress_summary as get_progress_summary_service
 from app.services import list_personal_records as list_personal_records_service
 
 router = APIRouter(
@@ -19,6 +25,23 @@ router = APIRouter(
         },
     },
 )
+
+
+@router.get(
+    "/summary",
+    response_model=ProgressSummaryResponse,
+    summary="Get progress summary",
+)
+async def get_progress_summary(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    query: Annotated[ProgressSummaryQuery, Query()],
+) -> ProgressSummaryResponse:
+    return await get_progress_summary_service(
+        session,
+        current_user.id,
+        query,
+    )
 
 
 @router.get(

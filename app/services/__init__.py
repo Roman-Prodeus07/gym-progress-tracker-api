@@ -16,6 +16,10 @@ from app.services.progress_calculations import (
     calculate_pace_seconds_per_km,
     round_decimal,
 )
+from app.services.progress_summary import (
+    build_progress_summary,
+    get_progress_summary,
+)
 from app.services.progress_time import (
     UTCDateRange,
     build_bucket_starts,
@@ -89,12 +93,14 @@ __all__ = [
     "UTCDateRange",
     "WORKLOAD_SET_TYPES",
     "build_bucket_starts",
+    "build_progress_summary",
     "calculate_decimal_average",
     "calculate_estimated_1rm",
     "calculate_load_volume",
     "calculate_pace_seconds_per_km",
     "get_bucket_start",
     "get_next_bucket_start",
+    "get_progress_summary",
     "local_date_range_to_utc",
     "round_decimal",
     "list_personal_records",
