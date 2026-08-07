@@ -43,6 +43,12 @@ and deployment practices.
 - Protection against cross-user workout, workout exercise, and workout set access
 - Async-safe eager loading of nested exercise response data
 - Cascading deletion of workout details while preserving catalogue exercises
+- Reverse-chronological workout history with optional UTC timestamp filtering
+- Detailed workout responses with ordered exercises, catalogue data, and sets
+- Owner-scoped progress analytics over completed workouts
+- Timezone-aware, DST-safe progress summaries with day, week, or month buckets
+- Strength and cardio personal records with deterministic tie-breaking
+- Chronological per-exercise progress points for strength, distance, pace, and RPE
 
 ## Technology stack
 
@@ -77,6 +83,7 @@ and deployment practices.
 │   │   │   ├── auth.py
 │   │   │   ├── exercises.py
 │   │   │   ├── health.py
+│   │   │   ├── progress.py
 │   │   │   ├── users.py
 │   │   │   ├── workout_exercises.py
 │   │   │   ├── workout_sets.py
@@ -98,6 +105,7 @@ and deployment practices.
 │   ├── schemas/
 │   │   ├── common.py
 │   │   ├── exercise.py
+│   │   ├── progress.py
 │   │   ├── token.py
 │   │   ├── user.py
 │   │   ├── workout.py
@@ -109,7 +117,12 @@ and deployment practices.
 │   ├── services/
 │   │   ├── auth.py
 │   │   ├── exercise.py
+│   │   ├── exercise_progress.py
 │   │   ├── exercise_seed.py
+│   │   ├── personal_record.py
+│   │   ├── progress_calculations.py
+│   │   ├── progress_summary.py
+│   │   ├── progress_time.py
 │   │   ├── user.py
 │   │   ├── workout.py
 │   │   ├── workout_exercise.py
@@ -126,6 +139,12 @@ and deployment practices.
 │   ├── test_health.py
 │   ├── test_jwt.py
 │   ├── test_login.py
+│   ├── test_personal_record_service.py
+│   ├── test_progress.py
+│   ├── test_progress_calculations.py
+│   ├── test_progress_schemas.py
+│   ├── test_progress_summary_service.py
+│   ├── test_progress_time.py
 │   ├── test_security.py
 │   ├── test_token_schemas.py
 │   ├── test_user_schemas.py
@@ -280,9 +299,9 @@ Run the tests:
 pytest
 ```
 
-The current validation baseline is 186 passing automated tests. The complete
-authenticated workout-recording flow has also been verified end to end against
-the Dockerised API and a real PostgreSQL database.
+The current validation baseline is 279 passing automated tests. The complete
+authenticated workout-recording, history, and progress flow has also been
+verified end to end against the Dockerised API and a real PostgreSQL database.
 
 ## Database migrations
 
@@ -336,6 +355,9 @@ alembic upgrade head
 | GET    | `/workouts/{workout_id}/exercises/{workout_exercise_id}/sets/{workout_set_id}`               | Bearer token   | Returns a workout set               |
 | PATCH  | `/workouts/{workout_id}/exercises/{workout_exercise_id}/sets/{workout_set_id}`               | Bearer token   | Updates a workout set               |
 | DELETE | `/workouts/{workout_id}/exercises/{workout_exercise_id}/sets/{workout_set_id}`               | Bearer token   | Deletes a workout set               |
+| GET    | `/progress/summary`                                                                           | Bearer token   | Summarises completed workout data   |
+| GET    | `/progress/personal-records`                                                                  | Bearer token   | Lists strength and cardio records   |
+| GET    | `/progress/exercises/{exercise_id}`                                                           | Bearer token   | Returns exercise progress history   |
 
 ## Register a user
 
@@ -565,7 +587,8 @@ provide or override the workout owner.
 ### List workouts
 
 ```bash
-curl "http://localhost:8000/workouts?limit=20&offset=0" \
+curl \
+  "http://localhost:8000/workouts?limit=20&offset=0&started_from=2026-07-01T00:00:00Z&started_to=2026-07-31T23:59:59Z" \
   -H "Authorization: Bearer <access-token>"
 ```
 
@@ -591,6 +614,8 @@ Successful response:
 ```
 
 `limit` must be between `1` and `100`. `offset` must be zero or greater.
+`started_from` and `started_to` are optional inclusive UTC timestamp filters.
+Results are ordered by `started_at` from newest to oldest.
 
 ### Get a workout
 
@@ -598,6 +623,10 @@ Successful response:
 curl http://localhost:8000/workouts/<workout-id> \
   -H "Authorization: Bearer <access-token>"
 ```
+
+The detail response contains the workout's ordered exercises, each nested
+catalogue exercise, and its ordered sets. This provides the complete recorded
+session in a single owner-scoped request.
 
 ### Update a workout
 
@@ -828,6 +857,86 @@ Possible responses:
 | `409`  | Set number is already used for the workout exercise    |
 | `422`  | Request, metric, UUID, or pagination validation failed |
 
+## Progress analytics
+
+All progress endpoints require a Bearer access token and are scoped to the
+authenticated user. Analytics use completed workouts only; unfinished sessions
+never affect totals, records, or progress points.
+
+Date-range endpoints require inclusive `date_from` and `date_to` values, accept
+an IANA `timezone` such as `Europe/London`, and allow at most 366 days. Local
+calendar boundaries are converted to an exclusive UTC query range so daylight
+saving transitions are handled correctly.
+
+Workload metrics include `working`, `drop`, and `failure` sets. Warm-up sets are
+still counted in `recorded_set_count` but are excluded from workload totals.
+
+### Get a progress summary
+
+```bash
+curl \
+  "http://localhost:8000/progress/summary?date_from=2026-07-01&date_to=2026-07-31&timezone=Europe%2FLondon&bucket=week" \
+  -H "Authorization: Bearer <access-token>"
+```
+
+`bucket` supports `day`, `week`, and `month`, with `week` as the default. The
+response contains whole-period totals and chronological, zero-filled buckets
+for:
+
+- completed workouts and active days;
+- unique exercises, recorded sets, and work sets;
+- workout and timed-set duration;
+- distance, load volume, and average RPE.
+
+### List personal records
+
+```bash
+curl "http://localhost:8000/progress/personal-records?limit=100&offset=0" \
+  -H "Authorization: Bearer <access-token>"
+```
+
+Personal records use completed `working` and `failure` sets. Supported record
+types are:
+
+- `max_weight`
+- `max_reps`
+- `max_set_volume`
+- `estimated_1rm`
+- `max_distance`
+- `longest_duration`
+- `best_pace`
+
+Estimated one-repetition maximum uses the Epley formula for sets of 1 to 12
+repetitions. Candidates are ranked at full precision and rounded only for the
+response. Equal records use workout time, exercise position, set number, and
+set UUID for deterministic tie-breaking.
+
+### Get progress for one exercise
+
+```bash
+curl \
+  "http://localhost:8000/progress/exercises/<exercise-id>?date_from=2026-07-01&date_to=2026-07-31&timezone=Europe%2FLondon" \
+  -H "Authorization: Bearer <access-token>"
+```
+
+The response contains one chronological point per completed workout, combining
+every occurrence of the selected exercise in that session. Each point can
+include maximum weight and repetitions, set and total volume, estimated 1RM,
+distance, duration, pace, and average RPE.
+
+Inactive historical catalogue exercises remain queryable. A known exercise
+with no matching completed workouts returns an empty `points` list; an unknown
+exercise UUID returns `404 Not Found`.
+
+Possible responses:
+
+| Status | Meaning                                                   |
+| ------ | --------------------------------------------------------- |
+| `200`  | Progress summary, records, or exercise history returned  |
+| `401`  | Authentication is missing or invalid                      |
+| `404`  | Exercise progress requested for an unknown exercise       |
+| `422`  | Date range, timezone, bucket, UUID, or pagination invalid |
+
 ## Security decisions
 
 - Passwords are hashed with Argon2id and never stored in plaintext.
@@ -838,6 +947,8 @@ Possible responses:
 - Authentication failures return consistent `401 Unauthorized` responses.
 - Workout ownership is enforced in database queries using both resource and
   authenticated-user UUIDs.
+- Workout history and progress queries apply the authenticated-user UUID at the
+  SQL layer before pagination or aggregation.
 - Child resource queries join through the owned workout session instead of
   trusting client-supplied parent identifiers.
 - Missing and foreign workout, workout exercise, and workout set UUIDs return
@@ -846,6 +957,8 @@ Possible responses:
   data.
 - Nested catalogue exercise data is eagerly loaded before async response
   serialization.
+- Local progress date ranges are converted to UTC with IANA timezone rules and
+  exclusive upper bounds, including daylight saving transitions.
 - Database constraints enforce training-domain invariants independently of the
   API validation layer.
 - Child workout records are deleted through database cascades.
@@ -856,13 +969,14 @@ Possible responses:
 
 - Refresh-token rotation and logout/revocation
 - Workout templates and reusable training plans
-- Body measurements and progress analytics
+- Body measurements
 - Automated PostgreSQL integration and E2E test suite
 - GitHub Actions CI pipeline
 - Production deployment
 
 ## Project status
 
-Sprint 5: protected exercise catalogue, idempotent exercise seeding, and
-owner-scoped workout exercise and workout set CRUD. The current baseline is
-186 passing automated tests plus a successful full Docker/PostgreSQL E2E flow.
+Sprint 6: detailed workout history, UTC timestamp filtering, personal records,
+timezone-aware progress summaries, and per-exercise progress history. The
+current baseline is 279 passing automated tests plus a successful full
+Docker/PostgreSQL E2E flow.

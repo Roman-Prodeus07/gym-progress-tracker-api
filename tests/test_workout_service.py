@@ -108,6 +108,54 @@ async def test_list_workout_sessions_filters_owner_and_paginates() -> None:
 
 
 @pytest.mark.anyio
+async def test_list_workout_sessions_applies_date_range_to_count_and_items() -> None:
+    user_id = uuid4()
+    started_from = datetime(2026, 7, 1, tzinfo=UTC)
+    started_to = datetime(2026, 7, 31, 23, 59, 59, tzinfo=UTC)
+    workouts = [SimpleNamespace(id=uuid4())]
+    scalar_result = SimpleNamespace(
+        all=Mock(return_value=workouts),
+    )
+    session = SimpleNamespace(
+        scalar=AsyncMock(return_value=1),
+        scalars=AsyncMock(return_value=scalar_result),
+    )
+
+    result, total = await list_workout_sessions(
+        session,
+        user_id,
+        limit=20,
+        offset=5,
+        started_from=started_from,
+        started_to=started_to,
+    )
+
+    count_statement = session.scalar.await_args.args[0]
+    items_statement = session.scalars.await_args.args[0]
+    count_parameters = count_statement.compile().params.values()
+    items_parameters = items_statement.compile().params.values()
+
+    assert result == workouts
+    assert total == 1
+
+    assert user_id in count_parameters
+    assert started_from in count_parameters
+    assert started_to in count_parameters
+
+    assert user_id in items_parameters
+    assert started_from in items_parameters
+    assert started_to in items_parameters
+    assert 20 in items_parameters
+    assert 5 in items_parameters
+
+    for statement in (count_statement, items_statement):
+        statement_sql = str(statement)
+
+        assert "workout_sessions.started_at >=" in statement_sql
+        assert "workout_sessions.started_at <=" in statement_sql
+
+
+@pytest.mark.anyio
 async def test_get_owned_workout_session_filters_id_and_owner() -> None:
     workout_id = uuid4()
     user_id = uuid4()

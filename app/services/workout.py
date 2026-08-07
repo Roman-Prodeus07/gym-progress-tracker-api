@@ -4,8 +4,9 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.models import WorkoutSession
+from app.models import WorkoutExercise, WorkoutSession
 from app.schemas import WorkoutSessionCreate, WorkoutSessionUpdate
 
 
@@ -41,16 +42,25 @@ async def list_workout_sessions(
     user_id: UUID,
     limit: int,
     offset: int,
+    *,
+    started_from: datetime | None = None,
+    started_to: datetime | None = None,
 ) -> tuple[list[WorkoutSession], int]:
-    ownership_filter = WorkoutSession.user_id == user_id
+    workout_filters = [WorkoutSession.user_id == user_id]
+
+    if started_from is not None:
+        workout_filters.append(WorkoutSession.started_at >= started_from)
+
+    if started_to is not None:
+        workout_filters.append(WorkoutSession.started_at <= started_to)
 
     total = await session.scalar(
-        select(func.count()).select_from(WorkoutSession).where(ownership_filter)
+        select(func.count()).select_from(WorkoutSession).where(*workout_filters)
     )
 
     result = await session.scalars(
         select(WorkoutSession)
-        .where(ownership_filter)
+        .where(*workout_filters)
         .order_by(
             WorkoutSession.started_at.desc(),
             WorkoutSession.created_at.desc(),
@@ -72,6 +82,28 @@ async def get_owned_workout_session(
         select(WorkoutSession).where(
             WorkoutSession.id == workout_id,
             WorkoutSession.user_id == user_id,
+        )
+    )
+
+
+async def get_owned_workout_session_detail(
+    session: AsyncSession,
+    workout_id: UUID,
+    user_id: UUID,
+) -> WorkoutSession | None:
+    return await session.scalar(
+        select(WorkoutSession)
+        .where(
+            WorkoutSession.id == workout_id,
+            WorkoutSession.user_id == user_id,
+        )
+        .options(
+            selectinload(WorkoutSession.workout_exercises).selectinload(
+                WorkoutExercise.exercise
+            ),
+            selectinload(WorkoutSession.workout_exercises).selectinload(
+                WorkoutExercise.workout_sets
+            ),
         )
     )
 
