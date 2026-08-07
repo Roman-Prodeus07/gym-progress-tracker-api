@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes.auth import router as auth_router
 from app.api.routes.exercises import router as exercises_router
 from app.api.routes.health import router as health_router
+from app.api.routes.progress import router as progress_router
 from app.api.routes.users import router as users_router
 from app.api.routes.workout_exercises import (
     router as workout_exercises_router,
@@ -18,3 +19,4 @@ api_router.include_router(exercises_router)
 api_router.include_router(workout_exercises_router)
 api_router.include_router(workout_sets_router)
 api_router.include_router(workouts_router)
+api_router.include_router(progress_router)

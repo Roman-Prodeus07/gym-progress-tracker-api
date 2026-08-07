@@ -1,9 +1,13 @@
 from collections.abc import Iterable
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import UUID
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import Exercise, WorkoutExercise, WorkoutSession, WorkoutSet
 from app.schemas import PersonalRecordResponse, PersonalRecordType
 from app.services.progress_calculations import (
     PERSONAL_RECORD_SET_TYPES,
@@ -369,3 +373,52 @@ def select_personal_records(
     )
 
     return records
+
+
+async def list_personal_records(
+    session: AsyncSession,
+    user_id: UUID,
+    limit: int,
+    offset: int,
+) -> tuple[list[PersonalRecordResponse], int]:
+    result = await session.execute(
+        select(
+            Exercise.id.label("exercise_id"),
+            Exercise.name.label("exercise_name"),
+            WorkoutSession.id.label("workout_id"),
+            WorkoutExercise.id.label("workout_exercise_id"),
+            WorkoutSet.id.label("workout_set_id"),
+            WorkoutSession.started_at.label("started_at"),
+            WorkoutSession.completed_at.label("completed_at"),
+            WorkoutExercise.position.label("position"),
+            WorkoutSet.set_number.label("set_number"),
+            WorkoutSet.set_type.label("set_type"),
+            WorkoutSet.reps.label("reps"),
+            WorkoutSet.weight_kg.label("weight_kg"),
+            WorkoutSet.duration_seconds.label("duration_seconds"),
+            WorkoutSet.distance_meters.label("distance_meters"),
+        )
+        .select_from(WorkoutSet)
+        .join(
+            WorkoutExercise,
+            WorkoutSet.workout_exercise_id == WorkoutExercise.id,
+        )
+        .join(
+            WorkoutSession,
+            WorkoutExercise.workout_session_id == WorkoutSession.id,
+        )
+        .join(
+            Exercise,
+            WorkoutExercise.exercise_id == Exercise.id,
+        )
+        .where(WorkoutSession.user_id == user_id)
+    )
+
+    candidates = cast(
+        Iterable[PersonalRecordCandidate],
+        result.all(),
+    )
+    records = select_personal_records(candidates)
+    total = len(records)
+
+    return records[offset : offset + limit], total

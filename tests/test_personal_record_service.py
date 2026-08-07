@@ -1,9 +1,15 @@
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
-from app.schemas import PersonalRecordType
+import pytest
+from sqlalchemy.dialects import postgresql
+
+import app.services.personal_record as personal_record_service
+from app.schemas import PersonalRecordResponse, PersonalRecordType
 from app.services.personal_record import select_personal_records
 
 
@@ -16,6 +22,7 @@ def _candidate(
     weight_kg: Decimal | None = Decimal("100.000"),
     distance_meters: Decimal | None = None,
     completed: bool = True,
+    duration_seconds: int | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         exercise_id=exercise_id,
@@ -30,7 +37,7 @@ def _candidate(
         set_type=set_type,
         reps=reps,
         weight_kg=weight_kg,
-        duration_seconds=None,
+        duration_seconds=duration_seconds,
         distance_meters=distance_meters,
     )
 
@@ -339,35 +346,6 @@ def test_select_personal_records_selects_max_distance() -> None:
     assert distance_record.distance_meters == Decimal("5000.000")
 
 
-def _candidate(
-    *,
-    exercise_id: UUID,
-    started_at: datetime,
-    set_type: str = "working",
-    reps: int | None = 5,
-    weight_kg: Decimal | None = Decimal("100.000"),
-    duration_seconds: int | None = None,
-    distance_meters: Decimal | None = None,
-    completed: bool = True,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        exercise_id=exercise_id,
-        exercise_name="Bench Press",
-        workout_id=uuid4(),
-        workout_exercise_id=uuid4(),
-        workout_set_id=uuid4(),
-        started_at=started_at,
-        completed_at=(started_at + timedelta(hours=1) if completed else None),
-        position=1,
-        set_number=1,
-        set_type=set_type,
-        reps=reps,
-        weight_kg=weight_kg,
-        duration_seconds=duration_seconds,
-        distance_meters=distance_meters,
-    )
-
-
 def test_select_personal_records_selects_longest_duration() -> None:
     exercise_id = uuid4()
     base_time = datetime(2026, 7, 1, 10, 0, tzinfo=UTC)
@@ -483,3 +461,82 @@ def test_select_personal_records_selects_best_pace() -> None:
     assert pace_record.achieved_at == best_pace_set.started_at
     assert pace_record.duration_seconds == 1500
     assert pace_record.distance_meters == Decimal("5000.000")
+
+
+@pytest.mark.anyio
+async def test_list_personal_records_scopes_query_and_paginates_after_selection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    base_time = datetime(2026, 8, 1, 10, 0, tzinfo=UTC)
+
+    candidates = [
+        _candidate(
+            exercise_id=uuid4(),
+            started_at=base_time + timedelta(days=index),
+            reps=5,
+            weight_kg=Decimal("100.000"),
+        )
+        for index in range(3)
+    ]
+
+    query_result = SimpleNamespace(
+        all=Mock(return_value=candidates),
+    )
+    session = SimpleNamespace(
+        execute=AsyncMock(return_value=query_result),
+    )
+
+    selected_records = [
+        PersonalRecordResponse(
+            exercise_id=candidate.exercise_id,
+            exercise_name=candidate.exercise_name,
+            record_type=PersonalRecordType.MAX_WEIGHT,
+            value=Decimal("100.000"),
+            workout_id=candidate.workout_id,
+            workout_exercise_id=candidate.workout_exercise_id,
+            workout_set_id=candidate.workout_set_id,
+            achieved_at=candidate.started_at,
+            reps=candidate.reps,
+            weight_kg=candidate.weight_kg,
+            duration_seconds=candidate.duration_seconds,
+            distance_meters=candidate.distance_meters,
+        )
+        for candidate in reversed(candidates)
+    ]
+
+    received_candidates: list[object] = []
+
+    def fake_select_personal_records(
+        candidate_rows: Iterable[object],
+    ) -> list[PersonalRecordResponse]:
+        received_candidates.extend(candidate_rows)
+        return selected_records
+
+    monkeypatch.setattr(
+        personal_record_service,
+        "select_personal_records",
+        fake_select_personal_records,
+    )
+
+    records, total = await personal_record_service.list_personal_records(
+        session,
+        user_id,
+        limit=1,
+        offset=1,
+    )
+
+    statement = session.execute.await_args.args[0]
+    compiled = statement.compile(
+        dialect=postgresql.dialect(),
+    )
+    compiled_sql = " ".join(str(compiled).split())
+
+    assert "WHERE workout_sessions.user_id =" in compiled_sql
+    assert user_id in compiled.params.values()
+    assert " LIMIT " not in f" {compiled_sql.upper()} "
+    assert " OFFSET " not in f" {compiled_sql.upper()} "
+
+    assert received_candidates == candidates
+    assert total == 3
+    assert records == [selected_records[1]]

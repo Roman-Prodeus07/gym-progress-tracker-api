@@ -1,5 +1,9 @@
 from app.services.auth import authenticate_user
 from app.services.exercise import get_active_exercise, list_active_exercises
+from app.services.personal_record import (
+    list_personal_records,
+    select_personal_records,
+)
 from app.services.progress_calculations import (
     DISTANCE_QUANTUM,
     PERSONAL_RECORD_SET_TYPES,
@@ -93,4 +97,6 @@ __all__ = [
     "get_next_bucket_start",
     "local_date_range_to_utc",
     "round_decimal",
+    "list_personal_records",
+    "select_personal_records",
 ]
