@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-and-tests:
+    name: Quality, tests and migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      ENVIRONMENT: testing
+      DATABASE_URL: postgresql+psycopg://gym_tracker_ci:ci-database-password@localhost:5432/gym_progress_tracker_ci
+      JWT_SECRET_KEY: ci-only-secret-key-at-least-32-characters-long
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: gym_progress_tracker_ci
+          POSTGRES_USER: gym_tracker_ci
+          POSTGRES_PASSWORD: ci-database-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gym_tracker_ci -d gym_progress_tracker_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.lock
+
+      - name: Install locked dependencies
+        run: python -m pip install --requirement requirements.lock
+
+      - name: Check formatting
+        run: ruff format --check .
+
+      - name: Run linting
+        run: ruff check .
+
+      - name: Run type checking
+        run: mypy
+
+      - name: Run tests
+        run: pytest
+
+      - name: Verify migrations from an empty database
+        run: |
+          alembic upgrade head
+          alembic check
+
+      - name: Verify migration downgrade and re-upgrade
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+          alembic check
+
+  container:
+    name: Container build verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Build production image
+        run: docker build --pull --tag gym-progress-tracker-api:ci .
+
+      - name: Verify installed dependencies
+        run: |
+          docker run --rm \
+            --entrypoint python \
+            gym-progress-tracker-api:ci \
+            -m pip check
+
+      - name: Verify non-root runtime user
+        run: |
+          container_uid="$(
+            docker run --rm \
+              --entrypoint id \
+              gym-progress-tracker-api:ci \
+              -u
+          )"
+
+          if [ "$container_uid" = "0" ]; then
+            echo "::error::Container runs as root"
+            exit 1
+          fi
+
+          echo "Container runtime UID: $container_uid"
