@@ -9,12 +9,14 @@ WORKDIR /app
 RUN groupadd --system app && \
     useradd --system --gid app app
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md requirements.lock ./
 COPY app ./app
 COPY alembic.ini ./
 COPY alembic ./alembic
 
-RUN python -m pip install --no-cache-dir .
+RUN PIP_CONSTRAINT=/app/requirements.lock \
+    PIP_BUILD_CONSTRAINT=/app/requirements.lock \
+    python -m pip install --no-cache-dir .
 
 USER app
 
