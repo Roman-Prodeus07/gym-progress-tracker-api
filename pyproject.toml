@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gym-progress-tracker-api"
 version = "0.1.0"
-description = "A production-ready API for tracking gym workouts and fitness progress."
+description = "A production-oriented API for secure workout tracking and progress analytics."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
